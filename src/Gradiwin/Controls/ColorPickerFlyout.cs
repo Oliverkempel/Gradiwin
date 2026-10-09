@@ -35,6 +35,19 @@ public static class ColorPickerFlyout
             onPicked(ColorUtil.ToRgba(picker.Color));
             flyout.Hide();
         };
-        flyout.ShowAt(anchor);
+        // The picker is tall; with Placement=Auto WinUI throws ArgumentException ("Value does not fall within
+        // the expected range") when it can't fit on any side of the anchor, which always happened inside the
+        // gradient steps dialog. Fall back to opening below the anchor, allowed to extend past the window.
+        flyout.XamlRoot = anchor.XamlRoot;
+        try
+        {
+            flyout.ShowAt(anchor);
+        }
+        catch (ArgumentException)
+        {
+            flyout.Placement = FlyoutPlacementMode.Bottom;
+            flyout.ShouldConstrainToRootBounds = false;
+            flyout.ShowAt(anchor);
+        }
     }
 }
