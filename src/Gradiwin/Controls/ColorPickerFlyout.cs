@@ -25,29 +25,22 @@ public static class ColorPickerFlyout
         };
         var ok = new Button { Content = Localizer.T("Select"), Style = (Style)Application.Current.Resources["AccentButtonStyle"], HorizontalAlignment = HorizontalAlignment.Right };
         var panel = new StackPanel { Spacing = 8, Children = { picker, ok } };
+        // Placement=Auto made FlyoutBase.ShowAt throw ArgumentException ("Value does not fall within the
+        // expected range") for this picker in practice, from the sidebar and from dialogs alike, while an
+        // explicit placement always works. Open below the anchor and let the popup extend beyond the window
+        // (Windows keeps it on screen); the height cap fits a typical laptop screen, and it scrolls if needed.
         var flyout = new Flyout
         {
-            Content = new ScrollViewer { Content = panel, MaxHeight = 640 },
-            Placement = FlyoutPlacementMode.Auto,
+            Content = new ScrollViewer { Content = panel, MaxHeight = 560 },
+            Placement = FlyoutPlacementMode.Bottom,
+            ShouldConstrainToRootBounds = false,
         };
         ok.Click += (_, _) =>
         {
             onPicked(ColorUtil.ToRgba(picker.Color));
             flyout.Hide();
         };
-        // The picker is tall; with Placement=Auto WinUI throws ArgumentException ("Value does not fall within
-        // the expected range") when it can't fit on any side of the anchor, which always happened inside the
-        // gradient steps dialog. Fall back to opening below the anchor, allowed to extend past the window.
-        flyout.XamlRoot = anchor.XamlRoot;
-        try
-        {
-            flyout.ShowAt(anchor);
-        }
-        catch (ArgumentException)
-        {
-            flyout.Placement = FlyoutPlacementMode.Bottom;
-            flyout.ShouldConstrainToRootBounds = false;
-            flyout.ShowAt(anchor);
-        }
+        flyout.XamlRoot = anchor.XamlRoot; // required when the anchor is inside a ContentDialog
+        flyout.ShowAt(anchor);
     }
 }

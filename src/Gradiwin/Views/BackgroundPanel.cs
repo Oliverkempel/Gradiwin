@@ -173,6 +173,7 @@ public sealed partial class BackgroundPanel : UserControl
             BorderThickness = new Thickness(0),
         };
         ToolTipService.SetToolTip(more, Localizer.T("More Colors"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(more, Localizer.T("More Colors"));
         more.Click += (_, _) => ColorPickerFlyout.Show(more, _solid.Rgba, true, SetSolid);
         grid.Children.Add(more);
         panel.Children.Add(grid);
