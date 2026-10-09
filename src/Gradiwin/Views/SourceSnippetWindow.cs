@@ -109,14 +109,21 @@ public sealed class SourceSnippetWindow : Window
         create.HorizontalAlignment = HorizontalAlignment.Right;
         footer.Children.Add(create);
 
+        // Same integrated title bar as the main window.
+        var titleBar = WindowHelper.CreateTitleBar(this, Title);
+        var toolbarHost = new ScrollViewer { Content = toolbar, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalScrollMode = ScrollMode.Auto };
+
         var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.Children.Add(new ScrollViewer { Content = toolbar, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalScrollMode = ScrollMode.Auto });
-        Grid.SetRow(body, 1);
+        root.Children.Add(titleBar);
+        Grid.SetRow(toolbarHost, 1);
+        root.Children.Add(toolbarHost);
+        Grid.SetRow(body, 2);
         root.Children.Add(body);
-        Grid.SetRow(footer, 2);
+        Grid.SetRow(footer, 3);
         root.Children.Add(footer);
         Content = root;
 
