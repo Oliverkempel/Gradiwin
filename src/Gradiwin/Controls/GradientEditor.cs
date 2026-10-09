@@ -22,7 +22,8 @@ public sealed partial class GradientEditor : UserControl
 {
     private const float HandleRadius = 13;
     private const double MinClickDistance = 0.13;
-    private const int MaxStops = 6;
+    private const int MaxStops = 5; // Gradia allows at most five stops
+    private const double DragThreshold = 3;
 
     private readonly CanvasControl _canvas;
     private List<GradientStop> _stops = Gradient.DefaultSteps();
@@ -30,6 +31,7 @@ public sealed partial class GradientEditor : UserControl
     private int _dragging = -1;
     private double _dragOffset;
     private bool _moved;
+    private double _pressX;
 
     public event Action<IReadOnlyList<GradientStop>>? StopsChanged;
 
@@ -42,11 +44,10 @@ public sealed partial class GradientEditor : UserControl
         _canvas.PointerPressed += OnPressed;
         _canvas.PointerMoved += OnMoved;
         _canvas.PointerReleased += OnReleased;
-        _canvas.DoubleTapped += OnDoubleTapped;
         Content = _canvas;
         KeyDown += OnKeyDown;
         ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
-        ToolTipService.SetToolTip(this, Localizer.T("Click to add a color stop, drag to move, double-click to change its color, Delete to remove it."));
+        ToolTipService.SetToolTip(this, Localizer.T("Click a color stop to change its color, drag to move it, click the bar to add one, Delete to remove the selected one."));
         Unloaded += (_, _) => _canvas.RemoveFromVisualTree();
     }
 
@@ -95,6 +96,7 @@ public sealed partial class GradientEditor : UserControl
             _dragging = hit;
             _dragOffset = p.X - (BarLeft + _stops[hit].Position * BarWidth);
             _moved = false;
+            _pressX = p.X;
             _canvas.CapturePointer(e.Pointer);
         }
         else
@@ -116,6 +118,8 @@ public sealed partial class GradientEditor : UserControl
     {
         if (_dragging < 0) return;
         var p = e.GetCurrentPoint(_canvas).Position;
+        // Small jitter during a click must not count as a drag, or the click would not open the picker.
+        if (!_moved && Math.Abs(p.X - _pressX) < DragThreshold) return;
         double pos = Math.Round(PositionFromX(p.X - _dragOffset), 3);
         // Prevent overlapping handles (Gradia's _check_overlap_at_step).
         double minGap = 2 * HandleRadius / BarWidth;
@@ -133,7 +137,8 @@ public sealed partial class GradientEditor : UserControl
     {
         if (_dragging < 0) return;
         _canvas.ReleasePointerCapture(e.Pointer);
-        var moved = _stops[_dragging];
+        int index = _dragging;
+        var moved = _stops[index];
         _dragging = -1;
         if (_moved)
         {
@@ -141,14 +146,11 @@ public sealed partial class GradientEditor : UserControl
             _selected = _stops.IndexOf(moved);
             Commit();
         }
-    }
-
-    private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        var p = e.GetPosition(_canvas);
-        int hit = HitStop(p.X);
-        if (hit >= 0)
-            EditColor(hit);
+        else
+        {
+            // A click without dragging opens the color picker, like Gradia's GradientColorButton.
+            EditColor(index);
+        }
     }
 
     public void EditColor(int index)
