@@ -25,7 +25,6 @@ public sealed class SourceSnippetWindow : Window
     private readonly CanvasControl _preview = new();
     private readonly IReadOnlyList<ILanguage> _languages = SourceSnippetRenderer.Languages;
     private CanvasRenderTarget? _rendered;
-    private readonly SessionFiles _session = new();
 
     public SourceSnippetWindow(Func<string, Task> onCreated)
     {
@@ -37,16 +36,16 @@ public sealed class SourceSnippetWindow : Window
 
         _code = new TextBox
         {
-            Text = _s.SourceSnippetCodeText,
-            AcceptsReturn = true,
+            AcceptsReturn = true, // must precede Text, or the text is cut at the first newline
             TextWrapping = TextWrapping.NoWrap,
+            Text = ToTextBox(_s.SourceSnippetCodeText),
             FontFamily = new FontFamily("Cascadia Code, Cascadia Mono, Consolas"),
             IsSpellCheckEnabled = false,
             VerticalAlignment = VerticalAlignment.Stretch,
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(_code, ScrollBarVisibility.Auto);
         ScrollViewer.SetVerticalScrollBarVisibility(_code, ScrollBarVisibility.Auto);
-        _code.TextChanged += (_, _) => { _s.SourceSnippetCodeText = _code.Text; Rerender(); };
+        _code.TextChanged += (_, _) => { _s.SourceSnippetCodeText = CodeText; Rerender(); };
 
         foreach (var l in _languages)
             _language.Items.Add(l.Name);
@@ -124,8 +123,13 @@ public sealed class SourceSnippetWindow : Window
         };
     }
 
+    /// <summary>WinUI's TextBox separates lines with CR; store and render with LF.</summary>
+    private string CodeText => _code.Text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+
+    private static string ToTextBox(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\n', '\r');
+
     private SnippetOptions Options => new(
-        _code.Text,
+        CodeText,
         _language.SelectedIndex >= 0 ? _languages[_language.SelectedIndex] : null,
         SourceSnippetRenderer.Themes[Math.Max(0, _theme.SelectedIndex)],
         _frame.IsOn,

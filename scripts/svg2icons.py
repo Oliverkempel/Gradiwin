@@ -56,6 +56,79 @@ def style_dict(el):
     return d
 
 
+PARAMS = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "Q": 4, "T": 2, "A": 7, "Z": 0}
+
+
+def absolutize(d):
+    """Rewrites an SVG path with absolute commands only.
+
+    XAML's path mini-language resolves relative commands after 'Z' against the last point
+    instead of the subpath start (SVG semantics), which breaks most GNOME symbolic icons.
+    """
+    tokens = re.findall(r"[MmLlHhVvCcSsQqTtAaZz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?", d)
+    out = []
+    i = 0
+    cx = cy = sx = sy = 0.0
+    cmd = None
+    fmt = lambda v: f"{v:.6g}"
+    while i < len(tokens):
+        t = tokens[i]
+        if re.match(r"[A-Za-z]", t):
+            cmd = t
+            i += 1
+            if cmd in "Zz":
+                out.append("Z")
+                cx, cy = sx, sy
+                continue
+        elif cmd is None:
+            i += 1
+            continue
+        up = cmd.upper()
+        rel = cmd.islower()
+        n = PARAMS[up]
+        args = [float(x) for x in tokens[i:i + n]]
+        if len(args) < n:
+            break
+        i += n
+        if up == "M":
+            x, y = args
+            if rel:
+                x, y = cx + x, cy + y
+            out.append(f"M {fmt(x)},{fmt(y)}")
+            cx, cy = sx, sy = x, y
+            cmd = "l" if rel else "L"  # implicit lineto for following pairs
+        elif up == "L" or up == "T":
+            x, y = args
+            if rel:
+                x, y = cx + x, cy + y
+            out.append(f"{up} {fmt(x)},{fmt(y)}")
+            cx, cy = x, y
+        elif up == "H":
+            x = args[0] + (cx if rel else 0)
+            out.append(f"H {fmt(x)}")
+            cx = x
+        elif up == "V":
+            y = args[0] + (cy if rel else 0)
+            out.append(f"V {fmt(y)}")
+            cy = y
+        elif up in "CSQ":
+            pts = []
+            for k in range(0, n, 2):
+                x, y = args[k], args[k + 1]
+                if rel:
+                    x, y = cx + x, cy + y
+                pts.append(f"{fmt(x)},{fmt(y)}")
+            out.append(f"{up} " + " ".join(pts))
+            cx, cy = (args[-2] + cx, args[-1] + cy) if rel else (args[-2], args[-1])
+        elif up == "A":
+            rx, ry, rot, large, sweep, x, y = args
+            if rel:
+                x, y = cx + x, cy + y
+            out.append(f"A {fmt(rx)},{fmt(ry)} {fmt(rot)} {int(large)} {int(sweep)} {fmt(x)},{fmt(y)}")
+            cx, cy = x, y
+    return " ".join(out)
+
+
 def ellipse_d(cx, cy, rx, ry):
     return (f"M {cx - rx},{cy} A {rx},{ry} 0 1 0 {cx + rx},{cy} "
             f"A {rx},{ry} 0 1 0 {cx - rx},{cy} Z")
@@ -74,7 +147,7 @@ def shape_d(el):
     tag = el.tag.replace(SVG, "")
     f = lambda k, default=0.0: float(el.get(k, default))
     if tag == "path":
-        return el.get("d")
+        return absolutize(el.get("d") or "")
     if tag == "circle":
         return ellipse_d(f("cx"), f("cy"), f("r"), f("r"))
     if tag == "ellipse":
@@ -99,7 +172,7 @@ def walk(el, matrix, inherited, layers, masks):
         if mask_ref:
             mid = re.search(r"#([^)]+)", mask_ref).group(1)
             for cut in masks.get(mid, []):
-                d += " " + re.sub(r"^\s*m", "M", cut)
+                d += " " + cut
             evenodd = True
         stroke = style.get("stroke", "none") not in ("none", "")
         fill = style.get("fill", "#000") not in ("none",)

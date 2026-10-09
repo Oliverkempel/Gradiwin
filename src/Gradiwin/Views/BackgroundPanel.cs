@@ -54,9 +54,9 @@ public sealed partial class BackgroundPanel : UserControl
         _mode = _settings.BackgroundMode;
 
         _modes = new Segmented { HorizontalAlignment = HorizontalAlignment.Stretch };
-        foreach (var (label, icon) in new[] { ("None", ""), ("Solid", ""), ("Gradient", ""), ("Image", "") })
+        foreach (var label in new[] { "None", "Solid", "Gradient", "Image" })
         {
-            var item = new SegmentedItem { Content = Localizer.T(label), Icon = new FontIcon { Glyph = icon } };
+            var item = new SegmentedItem { Content = Localizer.T(label), HorizontalAlignment = HorizontalAlignment.Stretch };
             ToolTipService.SetToolTip(item, Localizer.T(label));
             _modes.Items.Add(item);
         }

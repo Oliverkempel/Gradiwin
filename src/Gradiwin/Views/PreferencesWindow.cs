@@ -41,7 +41,7 @@ public sealed class PreferencesWindow : Window
         Title = Localizer.StripMnemonic(Localizer.T("_Preferences"));
         SystemBackdrop = new MicaBackdrop();
         WindowHelper.SetIcon(this);
-        WindowHelper.Resize(this, 760, 640);
+        WindowHelper.Resize(this, 880, 680);
         ExtendsContentIntoTitleBar = true;
 
         _nav = new NavigationView

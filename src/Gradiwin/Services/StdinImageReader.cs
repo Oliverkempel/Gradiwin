@@ -32,6 +32,11 @@ public static partial class StdinImageReader
             if (type != FILE_TYPE_PIPE && type != FILE_TYPE_DISK)
                 return null;
 
+            // A parent may hand us an open pipe that never receives data (terminals, launchers);
+            // only read when bytes are actually waiting, so startup never blocks.
+            if (type == FILE_TYPE_PIPE && !WaitForPipeData(handle, TimeSpan.FromMilliseconds(250)))
+                return null;
+
             using var stdin = Console.OpenStandardInput();
             using var ms = new MemoryStream();
             stdin.CopyTo(ms);
@@ -63,6 +68,21 @@ public static partial class StdinImageReader
         }
     }
 
+    private static bool WaitForPipeData(nint pipe, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        do
+        {
+            if (!PeekNamedPipe(pipe, 0, 0, 0, out uint available, 0))
+                return false; // Broken/closed pipe: nothing to read.
+            if (available > 0)
+                return true;
+            Thread.Sleep(25);
+        }
+        while (DateTime.UtcNow < deadline);
+        return false;
+    }
+
     public static string? DetectExtension(ReadOnlySpan<byte> b)
     {
         if (b.Length < 12) return null;
@@ -80,4 +100,8 @@ public static partial class StdinImageReader
 
     [LibraryImport("kernel32.dll")]
     private static partial int GetFileType(nint hFile);
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool PeekNamedPipe(nint pipe, nint buffer, uint size, nint read, out uint available, nint left);
 }

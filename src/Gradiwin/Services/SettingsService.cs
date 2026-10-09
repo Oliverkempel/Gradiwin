@@ -29,8 +29,9 @@ public sealed class SettingsService
         {
             folder = Windows.Storage.ApplicationData.Current.LocalFolder.Path;
         }
-        catch (InvalidOperationException)
+        catch (Exception)
         {
+            // Unpackaged (no package identity): fall back to %LOCALAPPDATA%.
             folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Gradiwin");
         }
         Directory.CreateDirectory(folder);

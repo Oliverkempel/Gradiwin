@@ -36,6 +36,12 @@ public static class SourceSnippetRenderer
             Color.FromArgb(255, 0x9a, 0x9a, 0x9a), Color.FromArgb(255, 0xeb, 0xeb, 0xeb), Color.FromArgb(255, 0x3d, 0x3d, 0x3d)),
     ];
 
+    private static string? s_monoFont;
+
+    /// <summary>First installed monospace font (Win2D takes a single family name, not a CSS-style list).</summary>
+    public static string MonospaceFont => s_monoFont ??= new[] { "Cascadia Mono", "Cascadia Code", "Consolas", "Courier New" }
+        .FirstOrDefault(f => CanvasTextFormat.GetSystemFontFamilies().Contains(f)) ?? "Consolas";
+
     public static IReadOnlyList<ILanguage> Languages => ColorCode.Languages.All.OrderBy(l => l.Name).ToList();
 
     public static ILanguage? FindLanguage(string id) =>
@@ -83,13 +89,13 @@ public static class SourceSnippetRenderer
 
     public static CanvasRenderTarget Render(ICanvasResourceCreator device, SnippetOptions o)
     {
-        var code = o.Code.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\t', ' ');
+        var code = o.Code.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Replace("\t", "    ", StringComparison.Ordinal);
         if (code.Length == 0) code = " ";
         var lines = code.Split('\n');
 
         using var format = new CanvasTextFormat
         {
-            FontFamily = "Cascadia Code, Cascadia Mono, Consolas",
+            FontFamily = MonospaceFont,
             FontSize = FontSize,
             WordWrapping = CanvasWordWrapping.Wrap,
         };
@@ -165,7 +171,7 @@ public static class SourceSnippetRenderer
                 {
                     var caret = layout.GetCaretPosition(charIndex, false);
                     ds.DrawText((i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
-                        new Windows.Foundation.Rect(InnerPadding - 4, textY + caret.Y - format.FontSize * 0.1, gutterWidth - 12, FontSize * 1.6),
+                        new Windows.Foundation.Rect(InnerPadding - 4, textY + caret.Y, gutterWidth - 12, FontSize * 2),
                         o.Theme.Gutter, numberFormat);
                     charIndex += lines[i].Length + 1;
                 }

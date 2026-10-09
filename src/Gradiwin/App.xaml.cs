@@ -26,8 +26,13 @@ public partial class App : Application
         InitializeComponent();
         UnhandledException += (_, e) =>
         {
-            System.Diagnostics.Debug.WriteLine(e.Exception);
+            Log.Error("Unhandled exception", e.Exception);
             e.Handled = true;
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Log.Error("Unobserved task exception", e.Exception);
+            e.SetObserved();
         };
     }
 
@@ -38,6 +43,7 @@ public partial class App : Application
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        Log.Info($"Launched; resources={Resources.Count}, merged={Resources.MergedDictionaries.Count}, keys={string.Join(",", Resources.Keys.Take(20))}");
         TextAnnotation.Measurer = new AnnotationRenderer.Win2DTextMeasurer();
         SessionFiles.CleanupStale();
         NotificationService.Initialize();
@@ -53,6 +59,21 @@ public partial class App : Application
 
     private async Task HandleActivationAsync(AppActivationArguments activation, bool isFirst)
     {
+        try
+        {
+            await HandleActivationCoreAsync(activation, isFirst);
+        }
+        catch (Exception e)
+        {
+            Log.Error("Activation failed", e);
+            if (_windows.Count == 0)
+                OpenWindow();
+        }
+    }
+
+    private async Task HandleActivationCoreAsync(AppActivationArguments activation, bool isFirst)
+    {
+        Log.Info($"Activation: {activation.Kind}");
         CommandLineOptions options;
         switch (activation.Kind)
         {
@@ -79,6 +100,27 @@ public partial class App : Application
                 if (isFirst)
                 {
                     args = Environment.GetCommandLineArgs().Skip(1).ToList();
+#if DEBUG
+                    if (args.Count == 3 && args[0] == "--selftest")
+                    {
+                        var report = await Diagnostics.SelfTest.RunAsync(args[1], args[2]);
+                        Log.Info("Self-test report: " + report);
+                        Exit();
+                        return;
+                    }
+                    if (args.Count == 1 && args[0].StartsWith("--debug-window=", StringComparison.Ordinal))
+                    {
+                        var main = OpenWindow();
+                        switch (args[0]["--debug-window=".Length..])
+                        {
+                            case "preferences": main.OpenPreferences(); break;
+                            case "upload": main.OpenPreferences(PreferencesWindow.Page.Upload); break;
+                            case "ocr": main.OpenPreferences(PreferencesWindow.Page.Ocr); break;
+                            case "snippet": var sw = new SourceSnippetWindow(_ => Task.CompletedTask); Track(sw); sw.Activate(); break;
+                        }
+                        return;
+                    }
+#endif
                 }
                 else
                 {
