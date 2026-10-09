@@ -39,6 +39,7 @@ dotnet build src/Gradiwin/Gradiwin.csproj -p:Platform=x64
 
 There are two ways to run the app:
 
+- **Packaged without Visual Studio's WinUI workload:** turn on Developer Mode, then run `pwsh scripts/deploy-dev.ps1 -Launch` to build, register and start the app.
 - **Packaged:** turn on Developer Mode, then press F5 in Visual Studio, or run `Add-AppxPackage -Register src\Gradiwin\bin\x64\Debug\net10.0-windows10.0.22621.0\AppxManifest.xml`. The package adds the `gradia` / `gradiwin` command aliases.
 - **Unpackaged:** build with `-p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:RuntimeIdentifier=win-x64 -p:SelfContained=true`. Packaged-only features don't work this way: share target, notifications and command aliases.
 
