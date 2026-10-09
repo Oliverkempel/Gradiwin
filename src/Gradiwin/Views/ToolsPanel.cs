@@ -24,7 +24,7 @@ public sealed partial class ToolsPanel : UserControl
     private readonly SimpleColorPicker _fill = new("fill", Localizer.T("Fill"));
     private readonly SimpleColorPicker _border = new("outline-color", Localizer.T("Border"));
     private readonly ComboBox _font;
-    private readonly Grid _extra = new() { ColumnSpacing = 8, Margin = new Thickness(0, 6, 0, 0) };
+    private readonly Grid _extra = new() { ColumnSpacing = 8, RowSpacing = 8, Margin = new Thickness(0, 6, 0, 0) };
 
     private ToolDefinition _currentDef = ToolDefinition.For(DrawingMode.Select);
     private ToolOptions? _tempOptions;
@@ -69,9 +69,11 @@ public sealed partial class ToolsPanel : UserControl
         };
         ToolTipService.SetToolTip(_font, Localizer.T("Font"));
 
+        // Two equal columns; the text tool's font picker gets its own full-width row below.
         _extra.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         _extra.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        _extra.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) });
+        _extra.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        _extra.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var root = new StackPanel { Spacing = 6 };
         root.Children.Add(new TextBlock { Text = Localizer.T("Annotation Tools"), Style = (Style)Application.Current.Resources["SidebarHeaderStyle"], Margin = new Thickness(2, 0, 0, 6) });
@@ -205,24 +207,25 @@ public sealed partial class ToolsPanel : UserControl
         switch (def.Panel)
         {
             case ToolPanel.Fill:
-                Place(_fill, 0, 3);
+                Place(_fill, 0, 0, 2);
                 break;
             case ToolPanel.FillBorder:
-                Place(_fill, 0, 1);
-                Place(_border, 1, 2);
+                Place(_fill, 0, 0, 1);
+                Place(_border, 0, 1, 1);
                 break;
             case ToolPanel.Text:
-                Place(_fill, 0, 1);
-                Place(_border, 1, 1);
-                Place(_font, 2, 1);
+                Place(_fill, 0, 0, 1);
+                Place(_border, 0, 1, 1);
+                Place(_font, 1, 0, 2);
                 break;
         }
         _extra.Visibility = def.Panel == ToolPanel.Empty ? Visibility.Collapsed : Visibility.Visible;
         _updating = false;
     }
 
-    private void Place(FrameworkElement e, int column, int span)
+    private void Place(FrameworkElement e, int row, int column, int span)
     {
+        Grid.SetRow(e, row);
         Grid.SetColumn(e, column);
         Grid.SetColumnSpan(e, span);
         _extra.Children.Add(e);

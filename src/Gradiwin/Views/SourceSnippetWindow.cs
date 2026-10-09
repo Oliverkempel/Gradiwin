@@ -85,6 +85,10 @@ public sealed class SourceSnippetWindow : Window
         toolbar.Children.Add(_title);
         toolbar.Children.Add(_lineNumbers);
         toolbar.Children.Add(_width);
+        // The row is as tall as its tallest item (the toggle switches); without centering, the
+        // title TextBox stretches to that height and looks taller than the ComboBoxes.
+        foreach (var child in toolbar.Children.OfType<FrameworkElement>())
+            child.VerticalAlignment = VerticalAlignment.Center;
 
         var body = new Grid { ColumnSpacing = 12, Padding = new Thickness(16, 0, 16, 0) };
         body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
