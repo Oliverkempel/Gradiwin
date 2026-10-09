@@ -95,21 +95,21 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="SaveButton" HorizontalAlignment="Stretch" IsEnabled="False" Click="Save_Click"
+                        <Button x:Name="SaveButton" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" IsEnabled="False" Click="Save_Click"
                                 ToolTipService.ToolTip="{l:Tr Text='Save File'}">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE74E;" FontSize="14" />
                                 <TextBlock Text="{l:Tr Text='Save'}" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="CopyButton" Grid.Column="1" HorizontalAlignment="Stretch" IsEnabled="False" Click="Copy_Click"
+                        <Button x:Name="CopyButton" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" IsEnabled="False" Click="Copy_Click"
                                 Style="{StaticResource AccentButtonStyle}" ToolTipService.ToolTip="{l:Tr Text='Copy to Clipboard'}">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                                 <TextBlock Text="{l:Tr Text='Copy'}" />
                             </StackPanel>
                         </Button>
-                        <SplitButton x:Name="ShareButton" Grid.Column="2" IsEnabled="False" Click="Share_Click"
+                        <SplitButton x:Name="ShareButton" Grid.Column="2" VerticalAlignment="Stretch" IsEnabled="False" Click="Share_Click"
                                      ToolTipService.ToolTip="{l:Tr Text='Share Image'}">
                             <c:SymbolicIcon Icon="share" Size="16" />
                             <SplitButton.Flyout>
