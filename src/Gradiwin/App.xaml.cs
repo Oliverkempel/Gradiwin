@@ -47,6 +47,7 @@ public partial class App : Application
         Log.Info($"Launched; resources={Resources.Count}, merged={Resources.MergedDictionaries.Count}, keys={string.Join(",", Resources.Keys.Take(20))}");
         TextAnnotation.Measurer = new AnnotationRenderer.Win2DTextMeasurer();
         SessionFiles.CleanupStale();
+        ClipboardService.CleanupCopiedImages();
         NotificationService.Initialize();
         NotificationService.Invoked += a =>
         {

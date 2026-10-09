@@ -15,23 +15,53 @@ public static class ClipboardService
     public static bool IsImageFile(string path) => s_imageExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
 
     /// <summary>Writes the image to the clipboard as PNG (with alpha) and as a bitmap for older apps.</summary>
-    public static async Task CopyImageAsync(CanvasBitmap image, string tempFolder)
+    /// <summary>
+    /// Copied images live here rather than in the per-window session folder: apps that paste the
+    /// file (chat apps, Explorer, browsers) read it later, often after the window — or the whole
+    /// app — has closed. Old files are removed by <see cref="CleanupCopiedImages"/>.
+    /// </summary>
+    public static string CopiedImagesFolder
+    {
+        get
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "Gradiwin", "copied");
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+    }
+
+    public static async Task CopyImageAsync(CanvasBitmap image)
     {
         var png = await ImageEncoder.EncodePngAsync(image);
-        var path = Path.Combine(tempFolder, "clipboard.png");
+        var path = Path.Combine(CopiedImagesFolder, $"Gradiwin {DateTime.Now:yyyy-MM-dd HHmmss-fff}.png");
         await File.WriteAllBytesAsync(path, png);
-
-        var ras = new InMemoryRandomAccessStream();
-        await ras.WriteAsync(png.AsBuffer());
-        ras.Seek(0);
-
-        var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-        package.SetBitmap(RandomAccessStreamReference.CreateFromStream(ras));
-        package.SetData("PNG", RandomAccessStreamReference.CreateFromStream(ras.CloneStream()));
         var file = await StorageFile.GetFileFromPathAsync(path);
+
+        // Every format is backed by the file, so Flush() can render them all and they stay valid
+        // after Gradiwin exits (in-memory streams came out empty for some consumers).
+        var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+        package.SetBitmap(RandomAccessStreamReference.CreateFromFile(file));
+        package.SetData("PNG", await file.OpenReadAsync());
         package.SetStorageItems([file], readOnly: true);
         Clipboard.SetContent(package);
         Clipboard.Flush();
+    }
+
+    /// <summary>Deletes copied images older than two days.</summary>
+    public static void CleanupCopiedImages()
+    {
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(CopiedImagesFolder, "*.png"))
+            {
+                if (File.GetLastWriteTimeUtc(f) < DateTime.UtcNow.AddDays(-2))
+                    File.Delete(f);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Best effort.
+        }
     }
 
     public static void CopyText(string text)

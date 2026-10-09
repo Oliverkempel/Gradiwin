@@ -408,7 +408,7 @@ public sealed partial class MainWindow : Window
         {
             using var final = RenderFinal();
             if (final is null) return false;
-            await ClipboardService.CopyImageAsync(final, _session.Folder);
+            await ClipboardService.CopyImageAsync(final);
             if (!silent)
             {
                 _showCloseConfirmation = false;
