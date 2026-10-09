@@ -54,9 +54,24 @@ public sealed partial class BackgroundPanel : UserControl
         _mode = _settings.BackgroundMode;
 
         _modes = new Segmented { HorizontalAlignment = HorizontalAlignment.Stretch };
-        foreach (var label in new[] { "None", "Solid", "Gradient", "Image" })
+        foreach (var (label, glyph) in new[] { ("None", "\uE711"), ("Solid", "\uE91F"), ("Gradient", "\uE790"), ("Image", "\uEB9F") })
         {
-            var item = new SegmentedItem { Content = Localizer.T(label), HorizontalAlignment = HorizontalAlignment.Stretch };
+            // Icon stacked above the label: side by side they don't fit the sidebar width.
+            var item = new SegmentedItem
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(4, 6, 4, 6),
+                Content = new StackPanel
+                {
+                    Spacing = 2,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Children =
+                    {
+                        new FontIcon { Glyph = glyph, FontSize = 16, HorizontalAlignment = HorizontalAlignment.Center },
+                        new TextBlock { Text = Localizer.T(label), HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
+                    },
+                },
+            };
             ToolTipService.SetToolTip(item, Localizer.T(label));
             _modes.Items.Add(item);
         }
@@ -261,7 +276,7 @@ public sealed partial class BackgroundPanel : UserControl
         remove.Click += (_, _) => _gradientEditor.RemoveSelected();
         var steps = IconButton("", "Open Step Dialog", symbolic: false);
         steps.Click += async (_, _) => await ShowStepDialogAsync();
-        var presets = IconButton("", "Gradient Presets", symbolic: false);
+        var presets = IconButton("\uE790", "Gradient Presets", symbolic: false);
         presets.Click += (_, _) => ShowGradientPresets(presets);
         actions.Children.Add(remove);
         actions.Children.Add(steps);
