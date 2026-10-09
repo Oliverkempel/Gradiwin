@@ -7,7 +7,7 @@ Built with WinUI 3 (Windows App SDK 1.8), C#/.NET 10 and Win2D, packaged as MSIX
 
 I really liked using Gradia on Linux. It made turning a quick screenshot into something presentable effortless. For work, though, I use Windows, and I kept missing it.
 
-So I used an LLM (Claude) to port Gradia to Windows. The goal was an app that feels at home on Windows rather than a wrapped Linux app, with full feature parity with the original. It uses native Windows building blocks: WinUI 3, Fluent design, Windows OCR, the Share sheet, and the Print Screen key. The few places where it works differently are listed under [Differences from Gradia](#differences-from-gradia).
+So I used an LLM to port Gradia to Windows. The goal was an app that feels at home on Windows rather than a wrapped Linux app, with full feature parity with the original. It uses native Windows building blocks: WinUI 3, Fluent design, Windows OCR, the Share sheet, and the Print Screen key. The few places where it works differently are listed under [Differences from Gradia](#differences-from-gradia).
 
 All credit for the idea, the design and the original implementation goes to **Alexander Vanhee** and the Gradia contributors. This port builds directly on their work, including its algorithms, presets, icons, background images and translations. Thank you for making such a lovely tool and sharing it under the GPL. If you use Linux, please use [the original](https://github.com/AlexanderVanhee/Gradia), and consider [supporting its author](https://ko-fi.com/alexandervanhee).
 
