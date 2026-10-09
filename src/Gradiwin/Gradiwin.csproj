@@ -22,6 +22,16 @@
     <NoWarn>$(NoWarn);CA1416;MVVMTK0045</NoWarn>
   </PropertyGroup>
 
+  <!--
+    The WinUI XAML targets look up MSVC (VsInstallRoot\VC\Tools\MSVC) to locate vcmeta.dll, which is
+    only used for C++/WinRT projects. In Visual Studio without the C++ workload that folder doesn't
+    exist and the GetLatestMSVCVersion task crashes. Pre-setting the paths skips the lookup.
+  -->
+  <PropertyGroup Condition="'$(VsInstallRoot)' != '' and !Exists('$(VsInstallRoot)\VC\Tools\MSVC')">
+    <VCInstallPath32>unused-by-csharp</VCInstallPath32>
+    <VCInstallPath64>unused-by-csharp</VCInstallPath64>
+  </PropertyGroup>
+
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
     <ProjectCapability Include="Msix" />
