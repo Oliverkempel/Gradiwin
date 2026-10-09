@@ -21,7 +21,7 @@ public sealed class OcrWindow : Window
         {
             try
             {
-                using var bitmap = await CanvasBitmap.LoadAsync(CanvasDevice.GetSharedDevice(), Path.GetFullPath(path), 96);
+                using var bitmap = await Rendering.LoadedImage.LoadUnlockedAsync(CanvasDevice.GetSharedDevice(), Path.GetFullPath(path));
                 await OcrDialog.ShowAsync(root.XamlRoot, bitmap, copyAutomatically: standalone);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException || e.HResult != 0)

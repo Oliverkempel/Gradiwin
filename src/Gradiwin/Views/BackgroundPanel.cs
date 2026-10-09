@@ -429,7 +429,7 @@ public sealed partial class BackgroundPanel : UserControl
         {
             var resolved = ResolveImagePath(path);
             if (!File.Exists(resolved)) return;
-            var bmp = await CanvasBitmap.LoadAsync(CanvasDevice.GetSharedDevice(), resolved, 96);
+            var bmp = await LoadedImage.LoadUnlockedAsync(CanvasDevice.GetSharedDevice(), resolved);
             _image?.Dispose();
             _image = bmp;
 

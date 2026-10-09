@@ -207,7 +207,8 @@ public sealed class PreferencesWindow : Window
 
         void UpdateStatusCore()
         {
-            bool windowsBinding = HotkeyService.IsWindowsPrintScreenBindingEnabled();
+            // With the keyboard hook active, Windows' Snipping Tool binding no longer gets the key.
+            bool windowsBinding = HotkeyService.IsWindowsPrintScreenBindingEnabled() && !HotkeyService.IsHookActive;
             switch (HotkeyService.CurrentStatus)
             {
                 case HotkeyService.Status.Active when windowsBinding:

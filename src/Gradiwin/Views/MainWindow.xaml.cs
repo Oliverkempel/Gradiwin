@@ -938,7 +938,8 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception e) when (e.HResult != 0)
         {
-            NotificationService.Show(Localizer.T("Close Operation Failed"), Localizer.T("Failed to export image"));
+            Log.Error("Close export failed", e);
+            NotificationService.Show(Localizer.T("Close Operation Failed"), Localizer.T("Failed to export image") + ": " + e.Message);
         }
         _closeConfirmed = true;
         Close();

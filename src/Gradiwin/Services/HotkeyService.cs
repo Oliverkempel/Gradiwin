@@ -35,6 +35,7 @@ public sealed partial class HotkeyService : IDisposable
     private static bool s_classRegistered;
     private readonly nint _hwnd;
     private nint _icon;
+    private PrintScreenHook? _hook;
     private bool _trayAdded;
     private bool _capturing;
 
@@ -56,6 +57,9 @@ public sealed partial class HotkeyService : IDisposable
     public static Action? QuitRequested { get; set; }
 
     public static bool IsRunning => s_instance is not null;
+
+    /// <summary>True when the low-level hook is active, so Print Screen works even with Windows' Snipping Tool binding on.</summary>
+    public static bool IsHookActive => s_instance?._hook?.IsInstalled == true;
 
     /// <summary>Starts or stops the service to match the "printscreen-hotkey" setting.</summary>
     public static void Apply()
@@ -122,6 +126,11 @@ public sealed partial class HotkeyService : IDisposable
         // Message-only windows don't receive broadcasts such as TaskbarCreated, so use a hidden top-level window.
         _hwnd = CreateWindowExW(0, "GradiwinHotkeyWindow", "Gradiwin", 0, 0, 0, 0, 0, 0, 0, hinstance, 0);
         AddTrayIcon();
+
+        // Forward hook presses to this window's thread (the UI thread) as WM_HOTKEY.
+        var hwnd = _hwnd;
+        _hook = new PrintScreenHook(ctrl => PostMessageW(hwnd, WM_HOTKEY, ctrl ? HotkeyFull : HotkeyInteractive, 0));
+        Log.Info($"Print Screen keyboard hook installed={_hook.IsInstalled}");
     }
 
     private void RegisterKeys()
@@ -132,7 +141,7 @@ public sealed partial class HotkeyService : IDisposable
         int error = ok ? 0 : Marshal.GetLastPInvokeError();
         RegisterHotKey(_hwnd, HotkeyFull, MOD_CONTROL | MOD_NOREPEAT, VK_SNAPSHOT);
         Log.Info($"Print Screen hotkey registered={ok} error={error}");
-        SetStatus(ok ? Status.Active : Status.KeyTaken);
+        SetStatus(ok || _hook?.IsInstalled == true ? Status.Active : Status.KeyTaken);
     }
 
     private static nint StaticWindowProc(nint hwnd, uint msg, nint wParam, nint lParam)
@@ -245,6 +254,8 @@ public sealed partial class HotkeyService : IDisposable
 
     public void Dispose()
     {
+        _hook?.Dispose();
+        _hook = null;
         UnregisterHotKey(_hwnd, HotkeyInteractive);
         UnregisterHotKey(_hwnd, HotkeyFull);
         if (_trayAdded)
@@ -306,6 +317,7 @@ public sealed partial class HotkeyService : IDisposable
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern ushort RegisterClassExW(ref WNDCLASSEXW wc);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint CreateWindowExW(uint exStyle, string className, string windowName, uint style, int x, int y, int w, int h, nint parent, nint menu, nint instance, nint param);
+    [DllImport("user32.dll")] private static extern bool PostMessageW(nint hwnd, uint msg, nint wParam, nint lParam);
     [DllImport("user32.dll")] private static extern nint DefWindowProcW(nint hwnd, uint msg, nint wParam, nint lParam);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(nint hwnd);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(nint hwnd, int id, uint modifiers, uint vk);

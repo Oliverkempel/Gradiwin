@@ -66,7 +66,7 @@ public sealed class LoadedImage : IDisposable
         CanvasBitmap full;
         try
         {
-            full = await CanvasBitmap.LoadAsync(device, path, 96);
+            full = await LoadUnlockedAsync(device, path);
         }
         catch (Exception e) when (e.HResult == unchecked((int)0x88982F50) || e.HResult == unchecked((int)0x88982F07))
         {
@@ -77,6 +77,19 @@ public sealed class LoadedImage : IDisposable
         }
 
         return FromBitmap(full, path, origin, screenshotPath);
+    }
+
+    /// <summary>
+    /// Decodes from an in-memory copy. Loading straight from the path keeps the file open for the
+    /// bitmap's lifetime, which blocks overwriting the original screenshot on close.
+    /// </summary>
+    public static async Task<CanvasBitmap> LoadUnlockedAsync(ICanvasResourceCreator device, string path)
+    {
+        var bytes = await File.ReadAllBytesAsync(path);
+        using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+        await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(bytes));
+        stream.Seek(0);
+        return await CanvasBitmap.LoadAsync(device, stream, 96);
     }
 
     public static LoadedImage FromBitmap(CanvasBitmap full, string path, ImageOrigin origin, string? screenshotPath = null)

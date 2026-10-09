@@ -32,10 +32,18 @@ public static class ImageEncoder
 
     public static async Task SaveAsync(CanvasBitmap image, string path, ExportFormat format, bool compress)
     {
-        using var stream = File.Create(path + ".tmp");
-        await EncodeAsync(image, stream, format, compress);
-        stream.Close();
-        File.Move(path + ".tmp", path, overwrite: true);
+        var tmp = path + ".tmp";
+        try
+        {
+            await using (var stream = File.Create(tmp))
+                await EncodeAsync(image, stream, format, compress);
+            File.Move(tmp, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tmp))
+                File.Delete(tmp);
+        }
     }
 
     public static async Task EncodeAsync(CanvasBitmap image, Stream output, ExportFormat format, bool compress)
