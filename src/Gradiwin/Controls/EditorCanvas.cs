@@ -7,7 +7,6 @@ using Gradiwin.Rendering;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Brushes;
 using Microsoft.Graphics.Canvas.Geometry;
-using Microsoft.Graphics.Canvas.UI;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -19,24 +18,32 @@ using Windows.System;
 namespace Gradiwin.Controls;
 
 /// <summary>
-/// The image area: shows the processed preview on a checkerboard, handles zoom/pan
-/// (zoom_controller.py), annotation tools (drawing_overlay.py) and the crop overlay (crop_overlay.py).
+/// The image area: shows the processed preview on a checkerboard, annotation tools
+/// (drawing_overlay.py) and the crop overlay (crop_overlay.py).
+/// <para>
+/// Zoom and pan are handled by a zoomable <see cref="ScrollViewer"/>, i.e. Windows' DirectManipulation:
+/// precision-touchpad pinch and two-finger pan, inertia, edge bounce and Ctrl+wheel zoom run on the
+/// compositor thread and track the fingers 1:1. The content is a virtualized Win2D surface drawn in fixed
+/// "content" coordinates; when a zoom gesture settles it is re-rendered at the new resolution so it stays sharp.
+/// Elements that must keep a constant on-screen size (handles, outlines) are scaled by 1/zoom.
+/// </para>
 /// </summary>
 public sealed partial class EditorCanvas : UserControl
 {
     public const double MinZoom = 0.25;
     public const double MaxZoom = 5.0;
-    private const double ViewMargin = 16;
+    /// <summary>Space around the image, in content units at 100 % zoom.</summary>
+    private const double Pad = 16;
     private const float HandleSize = 8;
-    private const double PanStep = 30;
+    private const double KeyboardPanStep = 50;
 
-    private readonly CanvasControl _canvas;
+    private readonly ScrollViewer _scroll;
+    private readonly CanvasVirtualControl _content;
     private CanvasImageBrush? _checker;
     private ElementTheme _checkerTheme;
 
     private CanvasBitmap? _processed;
-    private double _zoom = 1;
-    private Vector2 _pan;
+    private double _fit = 1;
 
     // Drawing state
     private bool _isDrawing;
@@ -52,10 +59,10 @@ public sealed partial class EditorCanvas : UserControl
     private PointD _resizeStartMouse, _moveStart;
     private Annotation? _beforeEdit;
 
-    // Panning with middle mouse / space
+    // Panning with middle mouse / Space+drag (in viewport coordinates, which don't move while panning)
     private bool _panning;
     private Point _panStartPoint;
-    private Vector2 _panStartValue;
+    private double _panStartH, _panStartV;
 
     private double _scrollAccum;
     private bool _cropDragging;
@@ -63,20 +70,42 @@ public sealed partial class EditorCanvas : UserControl
     public EditorCanvas()
     {
         IsTabStop = true;
-        _canvas = new CanvasControl { ClearColor = Microsoft.UI.Colors.Transparent };
-        _canvas.Draw += OnDraw;
-        _canvas.CreateResources += (_, _) => _checker = null;
-        Content = _canvas;
+        _content = new CanvasVirtualControl
+        {
+            ClearColor = Microsoft.UI.Colors.Transparent,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _content.RegionsInvalidated += OnRegionsInvalidated;
+        _content.CreateResources += (_, _) => _checker = null;
 
-        _canvas.PointerPressed += OnPointerPressed;
-        _canvas.PointerMoved += OnPointerMoved;
-        _canvas.PointerReleased += OnPointerReleased;
-        _canvas.PointerCanceled += (_, e) => OnPointerReleased(this, e);
-        _canvas.PointerWheelChanged += OnPointerWheelChanged;
-        _canvas.DoubleTapped += OnDoubleTapped;
-        SizeChanged += (_, _) => { ClampPan(); Invalidate(); };
+        _scroll = new ScrollViewer
+        {
+            ZoomMode = ZoomMode.Enabled,
+            MinZoomFactor = (float)MinZoom,
+            MaxZoomFactor = (float)MaxZoom,
+            HorizontalScrollMode = ScrollMode.Auto,
+            VerticalScrollMode = ScrollMode.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            IsHorizontalRailEnabled = false,
+            IsVerticalRailEnabled = false,
+            IsTabStop = false,
+            Content = _content,
+        };
+        _scroll.ViewChanging += (_, e) => ZoomChanged?.Invoke(e.NextView.ZoomFactor);
+        _scroll.ViewChanged += OnViewChanged;
+        _scroll.SizeChanged += (_, _) => UpdateLayoutSize();
+        Content = _scroll;
+
+        _content.PointerPressed += OnPointerPressed;
+        _content.PointerMoved += OnPointerMoved;
+        _content.PointerReleased += OnPointerReleased;
+        _content.PointerCanceled += (_, e) => OnPointerReleased(this, e);
+        _content.PointerWheelChanged += OnPointerWheelChanged;
+        _content.DoubleTapped += OnDoubleTapped;
         ActualThemeChanged += (_, _) => Invalidate();
-        Unloaded += (_, _) => _canvas.RemoveFromVisualTree();
+        Unloaded += (_, _) => _content.RemoveFromVisualTree();
     }
 
     // ---------------- Public state ----------------
@@ -108,7 +137,8 @@ public sealed partial class EditorCanvas : UserControl
         }
     }
 
-    public double Zoom => _zoom;
+    /// <summary>Zoom relative to "fit to window" (1 = fit).</summary>
+    public double Zoom => _scroll.ZoomFactor;
 
     public int PreviewWidth => _processed is null ? 0 : (int)_processed.SizeInPixels.Width;
     public int PreviewHeight => _processed is null ? 0 : (int)_processed.SizeInPixels.Height;
@@ -123,16 +153,12 @@ public sealed partial class EditorCanvas : UserControl
     public event Action<PointD, Point, TextAnnotation?>? TextEntryRequested;
     public event Action? CropChanged;
 
-    public void Invalidate() => _canvas.Invalidate();
+    public void Invalidate() => _content.Invalidate();
 
     public void SetProcessed(CanvasBitmap? processed)
     {
-        bool sizeChanged = _processed is null || processed is null ||
-                           _processed.SizeInPixels.Width != processed.SizeInPixels.Width ||
-                           _processed.SizeInPixels.Height != processed.SizeInPixels.Height;
         _processed = processed;
-        if (sizeChanged)
-            ClampPan();
+        UpdateLayoutSize();
         Invalidate();
     }
 
@@ -224,141 +250,103 @@ public sealed partial class EditorCanvas : UserControl
     }
 
     // ---------------- Geometry ----------------
+    // Content coordinates: DIPs of the image laid out at "fit" size, offset by Pad. The ScrollViewer
+    // scales this whole space by the zoom factor, so pointer positions read relative to _content are
+    // already in content coordinates at any zoom.
 
-    private double FitScale
-    {
-        get
-        {
-            if (_processed is null) return 1;
-            double vw = Math.Max(1, ActualWidth - 2 * ViewMargin), vh = Math.Max(1, ActualHeight - 2 * ViewMargin);
-            return Math.Max(0.0001, Math.Min(vw / PreviewWidth, vh / PreviewHeight));
-        }
-    }
+    /// <summary>On-screen DIPs per content unit (the ScrollViewer zoom).</summary>
+    private double ZoomFactor => _scroll.ZoomFactor;
 
-    /// <summary>View DIPs per preview pixel.</summary>
-    public double DisplayScale => FitScale * _zoom;
+    /// <summary>On-screen DIPs per preview pixel.</summary>
+    public double DisplayScale => _fit * ZoomFactor;
 
-    public Rect ImageRect
-    {
-        get
-        {
-            if (_processed is null) return new Rect();
-            double s = DisplayScale;
-            double dw = PreviewWidth * s, dh = PreviewHeight * s;
-            return new Rect((ActualWidth - dw) / 2 + _pan.X, (ActualHeight - dh) / 2 + _pan.Y, dw, dh);
-        }
-    }
+    /// <summary>The image in content coordinates (aspect ratio is what callers rely on).</summary>
+    public Rect ImageRect => _processed is null
+        ? new Rect()
+        : new Rect(Pad, Pad, PreviewWidth * _fit, PreviewHeight * _fit);
 
-    private AnnotationTransform Transform
-    {
-        get
-        {
-            var r = ImageRect;
-            return new AnnotationTransform(new Vector2((float)r.X, (float)r.Y), PreviewWidth, PreviewHeight, (float)DisplayScale);
-        }
-    }
+    private AnnotationTransform Transform =>
+        new(new Vector2((float)Pad, (float)Pad), PreviewWidth, PreviewHeight, (float)_fit);
 
     private PointD ToImage(Point p) => Transform.Unmap(new Vector2((float)p.X, (float)p.Y)).Round();
 
-    private Vector2 ToView(PointD p) => Transform.Map(p);
+    private Vector2 ToContent(PointD p) => Transform.Map(p);
 
     private bool IsInImage(Point p) => ImageRect.Contains(p);
 
-    // ---------------- Zoom & pan (zoom_controller.py) ----------------
+    /// <summary>Recomputes the "fit" scale and the content size from the viewport.</summary>
+    private void UpdateLayoutSize()
+    {
+        if (_processed is null || _scroll.ActualWidth <= 0 || _scroll.ActualHeight <= 0)
+            return;
+        double vw = Math.Max(1, _scroll.ActualWidth - 2 * Pad), vh = Math.Max(1, _scroll.ActualHeight - 2 * Pad);
+        _fit = Math.Max(0.0001, Math.Min(vw / PreviewWidth, vh / PreviewHeight));
+        // Floor so the content never exceeds the viewport at 100 % (which would show scrollbars).
+        _content.Width = Math.Floor(PreviewWidth * _fit + 2 * Pad);
+        _content.Height = Math.Floor(PreviewHeight * _fit + 2 * Pad);
+        Invalidate();
+    }
 
-    public void SetZoom(double zoom, Point? anchor = null)
+    // ---------------- Zoom & pan ----------------
+
+    private void OnViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        ZoomChanged?.Invoke(ZoomFactor);
+        if (e.IsIntermediate) return;
+        // Re-render at the settled zoom so the image and strokes stay sharp (the compositor scaled the old
+        // surface during the gesture). Virtualization keeps this to the visible tiles.
+        float scale = (float)Math.Clamp(ZoomFactor, MinZoom, MaxZoom);
+        if (Math.Abs(_content.DpiScale - scale) > 0.01f)
+            _content.DpiScale = scale;
+        else
+            Invalidate();
+    }
+
+    /// <summary>Animated zoom that keeps <paramref name="anchor"/> (viewport coordinates) fixed.</summary>
+    private void ZoomTo(double zoom, Point? anchor = null, bool animate = true)
     {
         zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
-        if (_processed is null || Math.Abs(zoom - _zoom) < 1e-9)
-        {
-            _zoom = zoom;
-            ZoomChanged?.Invoke(_zoom);
-            return;
-        }
-        var a = anchor ?? new Point(ActualWidth / 2, ActualHeight / 2);
-        var rect = ImageRect;
-        double s = DisplayScale;
-        double ix = (a.X - rect.X) / s, iy = (a.Y - rect.Y) / s;
-
-        _zoom = zoom;
-        double ns = DisplayScale;
-        double centeredX = (ActualWidth - PreviewWidth * ns) / 2;
-        double centeredY = (ActualHeight - PreviewHeight * ns) / 2;
-        _pan = new Vector2((float)(a.X - ix * ns - centeredX), (float)(a.Y - iy * ns - centeredY));
-        ClampPan();
-        Invalidate();
-        ZoomChanged?.Invoke(_zoom);
+        double z = ZoomFactor;
+        var a = anchor ?? new Point(_scroll.ViewportWidth / 2, _scroll.ViewportHeight / 2);
+        double h = (_scroll.HorizontalOffset + a.X) * zoom / z - a.X;
+        double v = (_scroll.VerticalOffset + a.Y) * zoom / z - a.Y;
+        _scroll.ChangeView(Math.Max(0, h), Math.Max(0, v), (float)zoom, !animate);
     }
 
-    public void ZoomIn() => SetZoom(_zoom * 1.1 > 1 && _zoom < 1 ? 1 : _zoom * 1.25);
-    public void ZoomOut() => SetZoom(_zoom / 1.25 < 1 && _zoom > 1 ? 1 : _zoom / 1.25);
+    public void SetZoom(double zoom, Point? anchor = null) => ZoomTo(zoom, anchor);
 
-    public void ResetZoom()
-    {
-        _pan = Vector2.Zero;
-        SetZoom(1);
-        Invalidate();
-    }
+    public void ZoomIn() => ZoomTo(ZoomFactor < 1 && ZoomFactor * 1.25 > 1 ? 1 : ZoomFactor * 1.25);
 
-    public void PanBy(double dx, double dy)
-    {
-        _pan += new Vector2((float)dx, (float)dy);
-        ClampPan();
-        Invalidate();
-    }
+    public void ZoomOut() => ZoomTo(ZoomFactor > 1 && ZoomFactor / 1.25 < 1 ? 1 : ZoomFactor / 1.25);
 
-    private void ClampPan()
-    {
-        if (_processed is null)
-        {
-            _pan = Vector2.Zero;
-            return;
-        }
-        double s = DisplayScale;
-        double dw = PreviewWidth * s, dh = PreviewHeight * s;
-        double maxX = Math.Max(0, (dw - ActualWidth) / 2 + ViewMargin);
-        double maxY = Math.Max(0, (dh - ActualHeight) / 2 + ViewMargin);
-        _pan = new Vector2((float)Math.Clamp(_pan.X, -maxX, maxX), (float)Math.Clamp(_pan.Y, -maxY, maxY));
-    }
+    public void ResetZoom() => _scroll.ChangeView(0, 0, 1f, false);
+
+    public void PanBy(double dx, double dy) =>
+        _scroll.ChangeView(_scroll.HorizontalOffset - dx, _scroll.VerticalOffset - dy, null, false);
 
     private void OnPointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
-        var point = e.GetCurrentPoint(_canvas);
+        var point = e.GetCurrentPoint(_content);
         int delta = point.Properties.MouseWheelDelta;
         bool horizontal = point.Properties.IsHorizontalMouseWheel;
         var mods = e.KeyModifiers;
         bool ctrl = mods.HasFlag(VirtualKeyModifiers.Control);
         bool shift = mods.HasFlag(VirtualKeyModifiers.Shift);
+
+        // Gradia: the mouse wheel changes the tool size when the image isn't zoomed (or with Ctrl+Shift).
+        // Everything else (Ctrl+wheel zoom, scrolling, touchpad gestures) is left to the ScrollViewer.
+        bool adjustSize = (ctrl && shift) || (!ctrl && Math.Abs(ZoomFactor - 1) < 0.01);
+        if (!adjustSize || horizontal || !ToolDefinition.For(EffectiveSizeMode).HasScale)
+            return;
+
         e.Handled = true;
-
-        if (ctrl && !shift && !horizontal)
+        _scrollAccum += delta > 0 ? 0.35 * Math.Abs(delta) / 120.0 : -0.35 * Math.Abs(delta) / 120.0;
+        int step = (int)_scrollAccum;
+        if (step != 0)
         {
-            // Precision touchpad pinch also arrives as Ctrl+wheel.
-            double factor = Math.Pow(1.1, delta / 120.0);
-            SetZoom(_zoom * factor, point.Position);
-            return;
+            _scrollAccum -= step;
+            ToolSizeAdjustRequested?.Invoke(step);
         }
-
-        bool adjustSize = (ctrl && shift) || Math.Abs(_zoom - 1) < 1e-9;
-        if (adjustSize && !horizontal && ToolDefinition.For(EffectiveSizeMode).HasScale)
-        {
-            _scrollAccum += delta > 0 ? 0.35 * Math.Abs(delta) / 120.0 : -0.35 * Math.Abs(delta) / 120.0;
-            int step = (int)_scrollAccum;
-            if (step != 0)
-            {
-                _scrollAccum -= step;
-                ToolSizeAdjustRequested?.Invoke(step);
-            }
-            return;
-        }
-
-        double amount = PanStep * delta / 120.0;
-        if (horizontal)
-            PanBy(-amount, 0);
-        else if (shift)
-            PanBy(amount, 0);
-        else
-            PanBy(0, amount);
     }
 
     private DrawingMode EffectiveSizeMode => _selected?.Mode ?? Mode;
@@ -368,29 +356,34 @@ public sealed partial class EditorCanvas : UserControl
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         Focus(FocusState.Pointer);
-        var pt = e.GetCurrentPoint(_canvas);
+        var pt = e.GetCurrentPoint(_content);
         var p = pt.Position;
         _shift = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift);
 
         if (pt.Properties.IsMiddleButtonPressed || (pt.Properties.IsLeftButtonPressed && SpaceHeld))
         {
             _panning = true;
-            _panStartPoint = p;
-            _panStartValue = _pan;
-            _canvas.CapturePointer(e.Pointer);
+            _panStartPoint = e.GetCurrentPoint(_scroll).Position;
+            _panStartH = _scroll.HorizontalOffset;
+            _panStartV = _scroll.VerticalOffset;
+            _content.CapturePointer(e.Pointer);
             ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeAll);
             return;
         }
         if (!pt.Properties.IsLeftButtonPressed || _processed is null || LiveText is not null)
             return;
 
+        // A finger on a touchscreen would otherwise start a DirectManipulation pan; keep it for the tools.
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch && WantsPointer(p))
+            _content.CancelDirectManipulations();
+
         if (CropInteractive)
         {
-            var r = ImageRect;
-            if (Crop.BeginDrag(p.X, p.Y, r.X, r.Y, r.Width, r.Height))
+            var (x, y, rx, ry, rw, rh) = CropSpace(p);
+            if (Crop.BeginDrag(x, y, rx, ry, rw, rh))
             {
                 _cropDragging = true;
-                _canvas.CapturePointer(e.Pointer);
+                _content.CapturePointer(e.Pointer);
             }
             return;
         }
@@ -402,7 +395,7 @@ public sealed partial class EditorCanvas : UserControl
         {
             case DrawingMode.Text:
                 if (IsInImage(p))
-                    TextEntryRequested?.Invoke(img, p, null);
+                    TextEntryRequested?.Invoke(img, ContentToView(p), null);
                 return;
 
             case DrawingMode.Number:
@@ -416,14 +409,14 @@ public sealed partial class EditorCanvas : UserControl
             case DrawingMode.Select:
                 BeginSelectInteraction(p, img);
                 if (_moving || _resizing)
-                    _canvas.CapturePointer(e.Pointer);
+                    _content.CapturePointer(e.Pointer);
                 Invalidate();
                 return;
         }
 
         if (!IsInImage(p)) return;
         _isDrawing = true;
-        _canvas.CapturePointer(e.Pointer);
+        _content.CapturePointer(e.Pointer);
         if (Mode is DrawingMode.Pen or DrawingMode.Highlighter)
         {
             _stroke.Clear();
@@ -434,6 +427,29 @@ public sealed partial class EditorCanvas : UserControl
             _start = _end = img;
         }
         Invalidate();
+    }
+
+    /// <summary>Whether a touch at <paramref name="p"/> should go to the tools instead of panning.</summary>
+    private bool WantsPointer(Point p)
+    {
+        if (CropInteractive) return true;
+        if (!IsInImage(p)) return false;
+        if (Mode != DrawingMode.Select) return true;
+        var img = ToImage(p);
+        return HandleAt(p) != ResizeHandle.None || InSelectionBounds(img) || Document.HitTest(img) is not null;
+    }
+
+    private Point ContentToView(Point p) => _content.TransformToVisual(this).TransformPoint(p);
+
+    /// <summary>
+    /// The crop model works in on-screen pixels (30 px handles, 8 px edges), so feed it content
+    /// coordinates multiplied by the zoom.
+    /// </summary>
+    private (double X, double Y, double RX, double RY, double RW, double RH) CropSpace(Point p)
+    {
+        double z = ZoomFactor;
+        var r = ImageRect;
+        return (p.X * z, p.Y * z, r.X * z, r.Y * z, r.Width * z, r.Height * z);
     }
 
     private static bool SpaceHeld =>
@@ -473,21 +489,20 @@ public sealed partial class EditorCanvas : UserControl
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        var p = e.GetCurrentPoint(_canvas).Position;
+        var p = e.GetCurrentPoint(_content).Position;
         _shift = e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift);
 
         if (_panning)
         {
-            _pan = _panStartValue + new Vector2((float)(p.X - _panStartPoint.X), (float)(p.Y - _panStartPoint.Y));
-            ClampPan();
-            Invalidate();
+            var v = e.GetCurrentPoint(_scroll).Position;
+            _scroll.ChangeView(_panStartH - (v.X - _panStartPoint.X), _panStartV - (v.Y - _panStartPoint.Y), null, true);
             return;
         }
 
         if (_cropDragging)
         {
-            var r = ImageRect;
-            Crop.UpdateDrag(p.X, p.Y, r.Width, r.Height);
+            var (x, y, _, _, rw, rh) = CropSpace(p);
+            Crop.UpdateDrag(x, y, rw, rh);
             Invalidate();
             return;
         }
@@ -528,11 +543,11 @@ public sealed partial class EditorCanvas : UserControl
 
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        _canvas.ReleasePointerCapture(e.Pointer);
+        _content.ReleasePointerCapture(e.Pointer);
         if (_panning)
         {
             _panning = false;
-            UpdateCursor(e.GetCurrentPoint(_canvas).Position);
+            UpdateCursor(e.GetCurrentPoint(_content).Position);
             return;
         }
         if (_cropDragging)
@@ -568,10 +583,10 @@ public sealed partial class EditorCanvas : UserControl
     private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (Mode != DrawingMode.Select || _processed is null) return;
-        var p = e.GetPosition(_canvas);
+        var p = e.GetPosition(_content);
         var img = ToImage(p);
         if (_selected is TextAnnotation text && text.ContainsPoint(img))
-            TextEntryRequested?.Invoke(text.Position, p, text);
+            TextEntryRequested?.Invoke(text.Position, ContentToView(p), text);
     }
 
     /// <summary>Builds the annotation for the current drag (preview or final).</summary>
@@ -610,20 +625,23 @@ public sealed partial class EditorCanvas : UserControl
         return b.Inflate(pad).Contains(img);
     }
 
+    /// <summary>Handle size in content units, so handles keep 8 px on screen at any zoom.</summary>
+    private float HandleContentSize => (float)(HandleSize / ZoomFactor);
+
     private List<(ResizeHandle Handle, Vector2 TopLeft)> Handles(Annotation a)
     {
         var list = new List<(ResizeHandle, Vector2)>();
         if (!a.CanResize) return list;
-        var half = new Vector2(HandleSize / 2);
+        var half = new Vector2(HandleContentSize / 2);
         if (a is SegmentAnnotation seg)
         {
-            list.Add((ResizeHandle.TopLeft, ToView(seg.Start) - half));
-            list.Add((ResizeHandle.BottomRight, ToView(seg.End) - half));
+            list.Add((ResizeHandle.TopLeft, ToContent(seg.Start) - half));
+            list.Add((ResizeHandle.BottomRight, ToContent(seg.End) - half));
             return list;
         }
         var b = a.GetBounds().BoundingRect;
-        var p1 = ToView(new PointD(b.MinX, b.MinY));
-        var p2 = ToView(new PointD(b.MaxX, b.MaxY));
+        var p1 = ToContent(new PointD(b.MinX, b.MinY));
+        var p2 = ToContent(new PointD(b.MaxX, b.MaxY));
         list.Add((ResizeHandle.TopLeft, new Vector2(p1.X, p1.Y) - half));
         list.Add((ResizeHandle.TopRight, new Vector2(p2.X, p1.Y) - half));
         list.Add((ResizeHandle.BottomLeft, new Vector2(p1.X, p2.Y) - half));
@@ -634,17 +652,18 @@ public sealed partial class EditorCanvas : UserControl
     private ResizeHandle HandleAt(Point p)
     {
         if (_selected is null || !_selected.CanResize) return ResizeHandle.None;
+        float size = HandleContentSize;
         foreach (var (handle, tl) in Handles(_selected))
         {
-            if (p.X >= tl.X && p.X <= tl.X + HandleSize && p.Y >= tl.Y && p.Y <= tl.Y + HandleSize)
+            if (p.X >= tl.X && p.X <= tl.X + size && p.Y >= tl.Y && p.Y <= tl.Y + size)
                 return handle;
         }
         if (_selected is SegmentAnnotation) return ResizeHandle.None;
 
         var b = _selected.GetBounds().BoundingRect;
-        var v1 = ToView(new PointD(b.MinX, b.MinY));
-        var v2 = ToView(new PointD(b.MaxX, b.MaxY));
-        double m = HandleSize;
+        var v1 = ToContent(new PointD(b.MinX, b.MinY));
+        var v2 = ToContent(new PointD(b.MaxX, b.MaxY));
+        double m = size;
         if (Math.Abs(p.Y - v1.Y) <= m && p.X >= v1.X && p.X <= v2.X) return ResizeHandle.Top;
         if (Math.Abs(p.Y - v2.Y) <= m && p.X >= v1.X && p.X <= v2.X) return ResizeHandle.Bottom;
         if (Math.Abs(p.X - v1.X) <= m && p.Y >= v1.Y && p.Y <= v2.Y) return ResizeHandle.Left;
@@ -659,8 +678,8 @@ public sealed partial class EditorCanvas : UserControl
         {
             if (CropInteractive)
             {
-                var r = ImageRect;
-                shape = Crop.HitTest(pt.X, pt.Y, r.X, r.Y, r.Width, r.Height) switch
+                var (x, y, rx, ry, rw, rh) = CropSpace(pt);
+                shape = Crop.HitTest(x, y, rx, ry, rw, rh) switch
                 {
                     CropHit.TopLeft or CropHit.BottomRight => InputSystemCursorShape.SizeNorthwestSoutheast,
                     CropHit.TopRight or CropHit.BottomLeft => InputSystemCursorShape.SizeNortheastSouthwest,
@@ -727,17 +746,26 @@ public sealed partial class EditorCanvas : UserControl
         return _checker;
     }
 
-    private void OnDraw(CanvasControl sender, CanvasDrawEventArgs args)
+    private void OnRegionsInvalidated(CanvasVirtualControl sender, CanvasRegionsInvalidatedEventArgs args)
     {
-        var ds = args.DrawingSession;
+        foreach (var region in args.InvalidatedRegions)
+        {
+            using var ds = sender.CreateDrawingSession(region);
+            DrawScene(sender, ds);
+        }
+    }
+
+    private void DrawScene(ICanvasResourceCreator rc, CanvasDrawingSession ds)
+    {
         if (_processed is null) return;
 
         var rect = ImageRect;
         var t = Transform;
+        float z = (float)ZoomFactor;
 
-        // Transparency checkerboard (transparency_overlay.py).
-        var checker = GetChecker(sender);
-        checker.Transform = Matrix3x2.CreateTranslation((float)rect.X, (float)rect.Y);
+        // Transparency checkerboard (transparency_overlay.py), kept at a constant on-screen size.
+        var checker = GetChecker(rc);
+        checker.Transform = Matrix3x2.CreateScale(1 / z) * Matrix3x2.CreateTranslation((float)rect.X, (float)rect.Y);
         ds.FillRectangle(rect, checker);
 
         var interpolation = DisplayScale >= 2 ? CanvasImageInterpolation.NearestNeighbor : CanvasImageInterpolation.HighQualityCubic;
@@ -758,27 +786,28 @@ public sealed partial class EditorCanvas : UserControl
                     AnnotationRenderer.Draw(ds, live, t, _processed, 1f);
             }
             if (_selected is not null && !CropInteractive)
-                DrawSelection(ds, _selected);
+                DrawSelection(ds, _selected, z);
         }
 
         if (CropInteractive || Crop.HasCrop)
-            DrawCrop(ds, rect);
+            DrawCrop(ds, rect, z);
     }
 
-    private void DrawSelection(CanvasDrawingSession ds, Annotation a)
+    private void DrawSelection(CanvasDrawingSession ds, Annotation a, float z)
     {
         var accent = (Windows.UI.Color)Application.Current.Resources["SystemAccentColor"];
-        var pts = a.GetBounds().Points.Select(p => ToView(new PointD((int)p.X, (int)p.Y))).ToArray();
+        var pts = a.GetBounds().Points.Select(p => ToContent(new PointD((int)p.X, (int)p.Y))).ToArray();
         using (var geo = CanvasGeometry.CreatePolygon(ds, pts))
-            ds.DrawGeometry(geo, accent, 2);
+            ds.DrawGeometry(geo, accent, 2 / z);
+        float size = HandleContentSize;
         foreach (var (_, tl) in Handles(a))
         {
-            ds.FillRectangle(tl.X, tl.Y, HandleSize, HandleSize, Microsoft.UI.Colors.White);
-            ds.DrawRectangle(tl.X, tl.Y, HandleSize, HandleSize, accent, 1.5f);
+            ds.FillRectangle(tl.X, tl.Y, size, size, Microsoft.UI.Colors.White);
+            ds.DrawRectangle(tl.X, tl.Y, size, size, accent, 1.5f / z);
         }
     }
 
-    private void DrawCrop(CanvasDrawingSession ds, Rect img)
+    private void DrawCrop(CanvasDrawingSession ds, Rect img, float z)
     {
         double cx = img.X + Crop.X * img.Width, cy = img.Y + Crop.Y * img.Height;
         double cw = Crop.Width * img.Width, ch = Crop.Height * img.Height;
@@ -790,10 +819,10 @@ public sealed partial class EditorCanvas : UserControl
             ds.FillGeometry(mask, dim);
 
         var border = Windows.UI.Color.FromArgb((byte)((CropInteractive ? 0.8 : 0.5) * 255), 255, 255, 255);
-        ds.DrawRectangle((float)cx, (float)cy, (float)cw, (float)ch, border, 2);
+        ds.DrawRectangle((float)cx, (float)cy, (float)cw, (float)ch, border, 2 / z);
 
         if (!CropInteractive) return;
-        const float lw = 4, len = 25;
+        float lw = 4 / z, len = 25 / z;
         var white = Microsoft.UI.Colors.White;
         float x = (float)cx, y = (float)cy, w = (float)cw, h = (float)ch;
         // Corner brackets like _draw_corner_lines.
