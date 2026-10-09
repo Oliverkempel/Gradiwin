@@ -9,5 +9,7 @@
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|x86" Project="x86" />
+    <!-- MSIX apps must be deployed before Visual Studio can start them under the debugger. -->
+    <Deploy />
   </Project>
 </Solution>
