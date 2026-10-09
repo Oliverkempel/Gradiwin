@@ -76,7 +76,11 @@ public sealed partial class EditorCanvas : UserControl
         _canvas.DoubleTapped += OnDoubleTapped;
         SizeChanged += (_, _) => { ClampPan(); Invalidate(); };
         ActualThemeChanged += (_, _) => Invalidate();
-        Unloaded += (_, _) => _canvas.RemoveFromVisualTree();
+        Unloaded += (_, _) =>
+        {
+            StopZoomAnimation();
+            _canvas.RemoveFromVisualTree();
+        };
     }
 
     // ---------------- Public state ----------------
@@ -268,6 +272,15 @@ public sealed partial class EditorCanvas : UserControl
 
     public void SetZoom(double zoom, Point? anchor = null)
     {
+        // Jump immediately (no easing) and drop any running animation.
+        StopZoomAnimation();
+        ApplyZoom(zoom, anchor);
+        _targetZoom = _zoom;
+    }
+
+    /// <summary>Sets the zoom keeping the image point under <paramref name="anchor"/> fixed on screen.</summary>
+    private void ApplyZoom(double zoom, Point? anchor)
+    {
         zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
         if (_processed is null || Math.Abs(zoom - _zoom) < 1e-9)
         {
@@ -286,16 +299,26 @@ public sealed partial class EditorCanvas : UserControl
         double centeredY = (ActualHeight - PreviewHeight * ns) / 2;
         _pan = new Vector2((float)(a.X - ix * ns - centeredX), (float)(a.Y - iy * ns - centeredY));
         ClampPan();
+        _targetPan = _pan;
         Invalidate();
         ZoomChanged?.Invoke(_zoom);
     }
 
-    public void ZoomIn() => SetZoom(_zoom * 1.1 > 1 && _zoom < 1 ? 1 : _zoom * 1.25);
-    public void ZoomOut() => SetZoom(_zoom / 1.25 < 1 && _zoom > 1 ? 1 : _zoom / 1.25);
+    /// <summary>Eases toward a new zoom level (used by trackpad pinch, Ctrl+wheel and the zoom buttons).</summary>
+    public void AnimateZoomTo(double zoom, Point? anchor = null)
+    {
+        _targetZoom = Math.Clamp(zoom, MinZoom, MaxZoom);
+        _zoomAnchor = anchor ?? new Point(ActualWidth / 2, ActualHeight / 2);
+        StartAnimation();
+    }
+
+    public void ZoomIn() => AnimateZoomTo(_targetZoom * 1.1 > 1 && _targetZoom < 1 ? 1 : _targetZoom * 1.25);
+    public void ZoomOut() => AnimateZoomTo(_targetZoom / 1.25 < 1 && _targetZoom > 1 ? 1 : _targetZoom / 1.25);
 
     public void ResetZoom()
     {
-        _pan = Vector2.Zero;
+        StopZoomAnimation();
+        _pan = _targetPan = Vector2.Zero;
         SetZoom(1);
         Invalidate();
     }
@@ -304,7 +327,82 @@ public sealed partial class EditorCanvas : UserControl
     {
         _pan += new Vector2((float)dx, (float)dy);
         ClampPan();
+        _targetPan = _pan;
         Invalidate();
+    }
+
+    /// <summary>Eases the pan toward an offset (wheel and two-finger trackpad scrolling).</summary>
+    private void AnimatePanBy(double dx, double dy)
+    {
+        if (!_animating)
+            _targetPan = _pan; // the pan may have changed directly (drag, resize) since the last animation
+        var current = _pan;
+        _pan = _targetPan + new Vector2((float)dx, (float)dy);
+        ClampPan();
+        _targetPan = _pan;
+        _pan = current;
+        StartAnimation();
+    }
+
+    // ---- Frame-synced easing ----
+    // Each frame moves a fixed fraction of the remaining distance (exponential smoothing), so many
+    // small trackpad deltas blend into continuous motion and coarse wheel notches glide instead of jumping.
+    private const double EaseTimeConstant = 0.06; // seconds
+
+    private double _targetZoom = 1;
+    private Point _zoomAnchor;
+    private Vector2 _targetPan;
+    private bool _animating;
+    private readonly System.Diagnostics.Stopwatch _frameClock = new();
+
+    private void StartAnimation()
+    {
+        if (_animating) return;
+        _animating = true;
+        _frameClock.Restart();
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnAnimationFrame;
+    }
+
+    private void StopZoomAnimation()
+    {
+        if (!_animating) return;
+        _animating = false;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnAnimationFrame;
+    }
+
+    private void OnAnimationFrame(object? sender, object e)
+    {
+        double dt = Math.Min(0.05, _frameClock.Elapsed.TotalSeconds);
+        _frameClock.Restart();
+        double t = 1 - Math.Exp(-dt / EaseTimeConstant);
+
+        bool zoomDone = Math.Abs(Math.Log(_targetZoom / _zoom)) < 0.001;
+        if (!zoomDone)
+        {
+            // Interpolate in log space so zooming in and out feel equally fast.
+            double z = Math.Exp(Math.Log(_zoom) + (Math.Log(_targetZoom) - Math.Log(_zoom)) * t);
+            ApplyZoom(z, _zoomAnchor);
+        }
+        else if (_zoom != _targetZoom)
+        {
+            ApplyZoom(_targetZoom, _zoomAnchor);
+        }
+        else
+        {
+            var diff = _targetPan - _pan;
+            if (diff.Length() < 0.5f)
+            {
+                _pan = _targetPan;
+                Invalidate();
+                StopZoomAnimation();
+                return;
+            }
+            var keep = _targetPan;
+            _pan += diff * (float)t;
+            ClampPan();
+            _targetPan = keep;
+            Invalidate();
+        }
     }
 
     private void ClampPan()
@@ -333,13 +431,13 @@ public sealed partial class EditorCanvas : UserControl
 
         if (ctrl && !shift && !horizontal)
         {
-            // Precision touchpad pinch also arrives as Ctrl+wheel.
+            // Precision touchpad pinch arrives as Ctrl+wheel; accumulate into the target and ease toward it.
             double factor = Math.Pow(1.1, delta / 120.0);
-            SetZoom(_zoom * factor, point.Position);
+            AnimateZoomTo(_targetZoom * factor, point.Position);
             return;
         }
 
-        bool adjustSize = (ctrl && shift) || Math.Abs(_zoom - 1) < 1e-9;
+        bool adjustSize = (ctrl && shift) || (Math.Abs(_targetZoom - 1) < 1e-9 && !_animating);
         if (adjustSize && !horizontal && ToolDefinition.For(EffectiveSizeMode).HasScale)
         {
             _scrollAccum += delta > 0 ? 0.35 * Math.Abs(delta) / 120.0 : -0.35 * Math.Abs(delta) / 120.0;
@@ -354,11 +452,11 @@ public sealed partial class EditorCanvas : UserControl
 
         double amount = PanStep * delta / 120.0;
         if (horizontal)
-            PanBy(-amount, 0);
+            AnimatePanBy(-amount, 0);
         else if (shift)
-            PanBy(amount, 0);
+            AnimatePanBy(amount, 0);
         else
-            PanBy(0, amount);
+            AnimatePanBy(0, amount);
     }
 
     private DrawingMode EffectiveSizeMode => _selected?.Mode ?? Mode;
@@ -375,6 +473,8 @@ public sealed partial class EditorCanvas : UserControl
         if (pt.Properties.IsMiddleButtonPressed || (pt.Properties.IsLeftButtonPressed && SpaceHeld))
         {
             _panning = true;
+            StopZoomAnimation();
+            _targetZoom = _zoom;
             _panStartPoint = p;
             _panStartValue = _pan;
             _canvas.CapturePointer(e.Pointer);
@@ -479,6 +579,7 @@ public sealed partial class EditorCanvas : UserControl
         if (_panning)
         {
             _pan = _panStartValue + new Vector2((float)(p.X - _panStartPoint.X), (float)(p.Y - _panStartPoint.Y));
+            _targetPan = _pan;
             ClampPan();
             Invalidate();
             return;
