@@ -33,6 +33,7 @@ public sealed partial class QuickColorPicker : StackPanel
             BorderThickness = new Thickness(0),
         };
         ToolTipService.SetToolTip(_more, Localizer.T("More Colors"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_more, Localizer.T("More Colors"));
         _more.Click += (_, _) => ColorPickerFlyout.Show(_more, _color, WithAlpha, c =>
         {
             SetColor(c);
@@ -163,6 +164,7 @@ public sealed partial class SimpleColorPicker : Button
         }
         var more = new Button { Content = new SymbolicIcon("color", 18), Padding = new Thickness(8), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0) };
         ToolTipService.SetToolTip(more, Localizer.T("More Colors"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(more, Localizer.T("More Colors"));
         more.Click += (_, _) =>
         {
             flyout.Hide();

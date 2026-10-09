@@ -60,15 +60,22 @@ public sealed partial class BackgroundPanel : UserControl
             var item = new SegmentedItem
             {
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Padding = new Thickness(4, 6, 4, 6),
+                // Extra bottom padding leaves room for the selection indicator under the label.
+                Padding = new Thickness(4, 10, 4, 12),
                 Content = new StackPanel
                 {
-                    Spacing = 2,
+                    Spacing = 5,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Children =
                     {
                         new FontIcon { Glyph = glyph, FontSize = 16, HorizontalAlignment = HorizontalAlignment.Center },
-                        new TextBlock { Text = Localizer.T(label), HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
+                        new TextBlock
+                        {
+                            Text = Localizer.T(label),
+                            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                        },
                     },
                 },
             };
@@ -166,6 +173,7 @@ public sealed partial class BackgroundPanel : UserControl
             BorderThickness = new Thickness(0),
         };
         ToolTipService.SetToolTip(more, Localizer.T("More Colors"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(more, Localizer.T("More Colors"));
         more.Click += (_, _) => ColorPickerFlyout.Show(more, _solid.Rgba, true, SetSolid);
         grid.Children.Add(more);
         panel.Children.Add(grid);
