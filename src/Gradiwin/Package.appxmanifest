@@ -55,6 +55,11 @@
           </uap5:AppExecutionAlias>
         </uap5:Extension>
 
+        <!-- "Start with Windows": runs in the background so Print Screen is handled by Gradiwin. -->
+        <uap5:Extension Category="windows.startupTask" Executable="Gradiwin.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask TaskId="GradiwinStartup" Enabled="false" DisplayName="Gradiwin" />
+        </uap5:Extension>
+
         <uap:Extension Category="windows.fileTypeAssociation">
           <uap:FileTypeAssociation Name="images">
             <uap:DisplayName>Image</uap:DisplayName>

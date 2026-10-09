@@ -140,7 +140,7 @@ public sealed class PreferencesWindow : Window
         page.Children.Add(Card("Recent Screenshots Folder", "Where screenshots are saved and the welcome page looks for recent ones",
             new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { folderText, choose, reset } }, ""));
 
-        page.Children.Add(BuildShortcutGuide());
+        page.Children.Add(BuildPrintScreenSection());
 
         page.Children.Add(GroupHeader("Export"));
         var format = new ComboBox { MinWidth = 160 };
@@ -174,13 +174,93 @@ public sealed class PreferencesWindow : Window
         return page;
     }
 
-    /// <summary>Port of preferences/screenshot_guide_page.blp, adapted to Windows shortcuts.</summary>
-    private static UIElement BuildShortcutGuide()
+    /// <summary>
+    /// Print Screen integration (replaces Gradia's screenshot_guide_page): Gradiwin claims the
+    /// Print Screen key while it runs in the notification area, optionally starting with Windows.
+    /// </summary>
+    private UIElement BuildPrintScreenSection()
     {
+        var panel = new StackPanel { Spacing = 4 };
+
+        var status = new InfoBar { IsClosable = false, Margin = new Thickness(0, 0, 0, 4) };
+        var openKeyboard = new Button { Content = Localizer.T("Open Keyboard Settings") };
+        openKeyboard.Click += (_, _) => _ = WindowHelper.OpenUriAsync("ms-settings:easeofaccess-keyboard");
+        var retry = new Button { Content = Localizer.T("Try Again") };
+        retry.Click += (_, _) => HotkeyService.Apply();
+
+        var hotkey = new ToggleSwitch { IsOn = _s.PrintScreenHotkey };
+        var startup = new ToggleSwitch { IsEnabled = false };
+
+        void UpdateStatus()
+        {
+            bool windowsBinding = HotkeyService.IsWindowsPrintScreenBindingEnabled();
+            switch (HotkeyService.CurrentStatus)
+            {
+                case HotkeyService.Status.Active when windowsBinding:
+                    status.Severity = InfoBarSeverity.Warning;
+                    status.Title = Localizer.T("Windows may still open Snipping Tool");
+                    status.Message = Localizer.T("Turn off \"Use the Print screen key to open screen capture\" in Windows keyboard settings so Print Screen always opens Gradiwin.");
+                    status.Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8), Children = { openKeyboard } };
+                    break;
+                case HotkeyService.Status.Active:
+                    status.Severity = InfoBarSeverity.Success;
+                    status.Title = Localizer.T("Print Screen opens Gradiwin");
+                    status.Message = Localizer.T("PrtScn: select an area or window · Ctrl+PrtScn: all screens. Gradiwin stays in the notification area after you close its windows.");
+                    status.Content = null;
+                    break;
+                case HotkeyService.Status.KeyTaken:
+                    status.Severity = InfoBarSeverity.Error;
+                    status.Title = Localizer.T("Print Screen is used by another program");
+                    status.Message = windowsBinding
+                        ? Localizer.T("Windows uses Print Screen for Snipping Tool. Turn off \"Use the Print screen key to open screen capture\" in keyboard settings, then try again.")
+                        : Localizer.T("Another app (for example OneDrive, ShareX or Greenshot) has claimed Print Screen. Turn it off there, then try again.");
+                    status.Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8), Children = { openKeyboard, retry } };
+                    break;
+            }
+            status.IsOpen = HotkeyService.CurrentStatus != HotkeyService.Status.Off;
+        }
+
+        async Task UpdateStartupAsync()
+        {
+            var state = await StartupService.GetStateAsync();
+            startup.IsEnabled = _s.PrintScreenHotkey && state is not (null or Windows.ApplicationModel.StartupTaskState.DisabledByPolicy or Windows.ApplicationModel.StartupTaskState.DisabledByUser);
+            startup.IsOn = state is Windows.ApplicationModel.StartupTaskState.Enabled or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
+            if (state == Windows.ApplicationModel.StartupTaskState.DisabledByUser)
+                ToolTipService.SetToolTip(startup, Localizer.T("Disabled in Task Manager › Startup apps"));
+        }
+
+        hotkey.Toggled += async (_, _) =>
+        {
+            _s.PrintScreenHotkey = hotkey.IsOn;
+            HotkeyService.Apply();
+            if (!hotkey.IsOn)
+                await StartupService.SetEnabledAsync(false);
+            UpdateStatus();
+            await UpdateStartupAsync();
+        };
+        startup.Toggled += async (_, _) =>
+        {
+            if (!startup.IsEnabled) return;
+            await StartupService.SetEnabledAsync(startup.IsOn);
+            await UpdateStartupAsync();
+        };
+
+        void OnStatusChanged() => DispatcherQueue.TryEnqueue(UpdateStatus);
+        HotkeyService.StatusChanged += OnStatusChanged;
+        Closed += (_, _) => HotkeyService.StatusChanged -= OnStatusChanged;
+        Activated += (_, _) => UpdateStatus(); // refresh after returning from Windows settings
+
+        panel.Children.Add(Card("Use Print Screen for Gradiwin", "Take screenshots with the Print Screen key instead of Snipping Tool", hotkey, ""));
+        panel.Children.Add(status);
+        panel.Children.Add(Card("Start with Windows", "Keep Gradiwin ready in the notification area after signing in", startup, ""));
+        UpdateStatus();
+        _ = UpdateStartupAsync();
+
+        // Command-line equivalents for custom shortcuts (Gradia's screenshot guide).
         var steps = new StackPanel { Spacing = 8, Padding = new Thickness(0, 4, 0, 4) };
         steps.Children.Add(new TextBlock
         {
-            Text = Localizer.T("To open Gradiwin with a keyboard shortcut, create a desktop shortcut with one of the commands below as its target, then set a \"Shortcut key\" in its Properties (for example Ctrl+Alt+S)."),
+            Text = Localizer.T("These commands can also be used as the target of a desktop shortcut with its own \"Shortcut key\"."),
             TextWrapping = TextWrapping.Wrap,
         });
         foreach (var (label, cmd) in new[]
@@ -211,12 +291,13 @@ public sealed class PreferencesWindow : Window
         }
         var expander = new SettingsExpander
         {
-            Header = Localizer.T("Screenshot Shortcut"),
-            Description = Localizer.T("Open Gradiwin right after taking a screenshot"),
-            HeaderIcon = new FontIcon { Glyph = "" },
+            Header = Localizer.T("Command Line"),
+            Description = Localizer.T("Start a screenshot from scripts or custom shortcuts"),
+            HeaderIcon = new FontIcon { Glyph = "" },
         };
         expander.Items.Add(new SettingsCard { Content = steps, HorizontalContentAlignment = HorizontalAlignment.Stretch, ContentAlignment = ContentAlignment.Vertical });
-        return expander;
+        panel.Children.Add(expander);
+        return panel;
     }
 
     // ---------------- Upload (provider_selection_window.py) ----------------

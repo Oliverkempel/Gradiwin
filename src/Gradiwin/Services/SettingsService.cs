@@ -200,6 +200,10 @@ public sealed class SettingsService
     /// <summary>BCP-47 tag of the OCR language; empty = user profile languages.</summary>
     public string TrainedData { get => Get("trained-data", ""); set => Set("trained-data", value); }
 
+    // ---- Print Screen integration ----
+    /// <summary>Claim the Print Screen key and stay resident in the notification area.</summary>
+    public bool PrintScreenHotkey { get => Get("printscreen-hotkey", false); set => Set("printscreen-hotkey", value); }
+
     // ---- Window ----
     public bool SidebarVisible { get => Get("sidebar-visible", true); set => Set("sidebar-visible", value); }
 

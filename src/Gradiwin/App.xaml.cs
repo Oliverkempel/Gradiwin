@@ -20,6 +20,7 @@ public partial class App : Application
 {
     private readonly List<Window> _windows = [];
     private DispatcherQueue? _dispatcher;
+    private bool _capturing;
 
     public App()
     {
@@ -53,6 +54,13 @@ public partial class App : Application
                 WindowHelper.OpenFolder(path);
         };
 
+        // Windows stay closable while the Print Screen service keeps the process alive.
+        DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+        HotkeyService.OpenRequested = () => WindowHelper.BringToFront(_windows.OfType<MainWindow>().LastOrDefault() ?? OpenWindow());
+        HotkeyService.PreferencesRequested = () => PreferencesWindow.Show(PreferencesWindow.Page.General);
+        HotkeyService.QuitRequested = Quit;
+        HotkeyService.Apply();
+
         AppInstance.GetCurrent().Activated += (_, e) => _dispatcher.TryEnqueue(() => _ = HandleActivationAsync(e, isFirst: false));
         _ = HandleActivationAsync(AppInstance.GetCurrent().GetActivatedEventArgs(), isFirst: true);
     }
@@ -84,6 +92,12 @@ public partial class App : Application
             case ExtendedActivationKind.ShareTarget when activation.Data is IShareTargetActivatedEventArgs shareArgs:
                 options = await ReceiveShareAsync(shareArgs.ShareOperation);
                 break;
+
+            case ExtendedActivationKind.StartupTask:
+                // Started at sign-in: stay in the notification area without opening a window.
+                if (!HotkeyService.IsRunning)
+                    ExitIfIdle();
+                return;
 
             case ExtendedActivationKind.AppNotification:
                 if (_windows.Count > 0)
@@ -231,21 +245,45 @@ public partial class App : Application
         {
             _windows.Remove(window);
             if (_windows.Count == 0)
-            {
                 SettingsService.Instance.Flush();
-                NotificationService.Unregister();
-            }
+            ExitIfIdle();
         };
+    }
+
+    /// <summary>Exits once no window is open, unless the Print Screen service keeps the app resident.</summary>
+    public void ExitIfIdle()
+    {
+        if (_windows.Count > 0 || HotkeyService.IsRunning || _capturing) return;
+        SettingsService.Instance.Flush();
+        NotificationService.Unregister();
+        Exit();
+    }
+
+    /// <summary>Tray "Quit": closes every window and stops the background service.</summary>
+    public void Quit()
+    {
+        HotkeyService.Shutdown();
+        foreach (var w in _windows.ToList())
+            w.Close();
+        ExitIfIdle();
     }
 
     /// <summary>Screenshot flow used by --screenshot and by windows without an image.</summary>
     public async Task TakeScreenshotIntoNewWindowAsync(ScreenshotMode mode, int delayMs, MainWindow? hideFrom)
     {
-        var result = await ScreenshotService.CaptureAsync(mode, delayMs, hideFrom);
+        string? result;
+        _capturing = true;
+        try
+        {
+            result = await ScreenshotService.CaptureAsync(mode, delayMs, hideFrom);
+        }
+        finally
+        {
+            _capturing = false;
+        }
         if (result is null)
         {
-            if (_windows.Count == 0)
-                Exit();
+            ExitIfIdle();
             return;
         }
         var target = hideFrom is { HasImage: false } ? hideFrom : OpenWindow();
