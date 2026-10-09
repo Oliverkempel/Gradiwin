@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "Gradiwin (Package)": {
+      "commandName": "MsixPackage"
+    }
+  }
+}
