@@ -47,6 +47,24 @@ To create an MSIX: `dotnet build src/Gradiwin/Gradiwin.csproj -c Release -p:Plat
 
 Debug builds include `Gradiwin.exe --selftest <image> <outdir>`, which renders every background, annotation type, export format, crop, snippet and OCR without any UI input.
 
+## CI and releases
+
+`main` is protected: changes go in through pull requests.
+
+- **CI** (`.github/workflows/ci.yml`) runs on every PR into `main`:
+  - It works out the version that merging would release and shows it in the run summary.
+  - It runs the unit tests and builds the x64 portable zip and MSIX.
+  - Its **Build & test** check must pass before merging.
+- **Release** (`.github/workflows/release.yml`) runs when a PR is merged:
+  - It bumps the latest `vX.Y.Z` tag according to the merged PR's label: `major`, `minor` or `patch` (the default when no label is set).
+  - It builds x64 and ARM64 portable zips and signed MSIX packages, then creates the tag and a GitHub Release with generated notes.
+  - Add the `skip-release` label to merge without releasing.
+  - You can also start it manually from the Actions tab.
+- **First release:** while there are no tags, the first release uses the version in `Directory.Build.props`.
+- **Signing:** MSIX packages are signed with a self-signed certificate, `CN=Gradiwin`, which must match the manifest's Publisher.
+  - The secrets `MSIX_CERT_PFX` (base64 PFX) and `MSIX_CERT_PASSWORD` hold the key. The public certificate is `build/Gradiwin.cer`.
+  - To install a release MSIX, import that certificate into *Local Machine › Trusted People*.
+
 ## Repository layout
 
 - `src/Gradiwin.Core`: platform-independent logic. This covers the models, the gradient generator, the layout maths, the auto-balance analyzer, annotations with undo, the crop model, the CLI parser and the `.po` reader.
