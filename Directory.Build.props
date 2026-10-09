@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Authors>Gradiwin contributors; original Gradia by Alexander Vanhee</Authors>
+    <Version>1.14.0</Version>
+  </PropertyGroup>
+</Project>

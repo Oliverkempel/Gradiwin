@@ -1,0 +1,76 @@
+{
+  "imgur": {
+    "name": "Imgur",
+    "description": "Popular image hosting with easy sharing and robust features",
+    "homepage_url": "https://imgur.com",
+    "tos_url": "https://imgur.com/tos",
+    "details": "Imgur is a widely used online image sharing community and image host, known for its simplicity and large user base. It offers convenient image uploading and direct linking.",
+    "features": [
+      {
+        "text": "Free image and GIF hosting",
+        "type": "positive"
+      },
+      {
+        "text": "Anonymous upload options available",
+        "type": "positive"
+      },
+      {
+        "text": "Embedding functionality",
+        "type": "positive"
+      },
+      {
+        "text": "Removal token functionality",
+        "type": "positive"
+      },
+      {
+        "text": "Subject to API rate limits for frequent uploads",
+        "type": "negative"
+      },
+      {
+        "text": "Service may not be available in the United Kingdom",
+        "type": "negative"
+      },
+      {
+        "text": "Requires your own Imgur API client ID",
+        "type": "neutral"
+      }
+    ]
+  },
+  "gofile": {
+    "name": "GoFile.io",
+    "description": "Free and robust file sharing platform for large files",
+    "homepage_url": "https://gofile.io",
+    "tos_url": "https://gofile.io/terms",
+    "details": "GoFile.io is a versatile file sharing service that allows users to upload and share files of various sizes. It's known for its ease of use and support for large uploads without requiring an account.",
+    "features": [
+      {
+        "text": "Free and easy-to-use file hosting",
+        "type": "positive"
+      },
+      {
+        "text": "No registration or account required",
+        "type": "positive"
+      },
+      {
+        "text": "Supports very large file uploads",
+        "type": "positive"
+      },
+      {
+        "text": "Provides direct download links",
+        "type": "positive"
+      },
+      {
+        "text": "Files are hosted temporarily and may expire",
+        "type": "negative"
+      },
+      {
+        "text": "API usage is subject to rate limits",
+        "type": "negative"
+      },
+      {
+        "text": "Access may be restricted in some geographical regions",
+        "type": "negative"
+      }
+    ]
+  }
+}

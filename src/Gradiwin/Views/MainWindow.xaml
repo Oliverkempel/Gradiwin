@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Gradiwin.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:l="using:Gradiwin.Services"
+    xmlns:c="using:Gradiwin.Controls"
+    xmlns:v="using:Gradiwin.Views"
+    Title="Gradiwin">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="Root" AllowDrop="True" DragOver="Root_DragOver" DragLeave="Root_DragLeave" Drop="Root_Drop">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Title bar: left tool buttons, draggable title, space for caption buttons -->
+        <Grid x:Name="TitleBarGrid" Height="44">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="CaptionColumn" Width="140" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Orientation="Horizontal" Spacing="2" Margin="6,0,0,0" VerticalAlignment="Center">
+                <ToggleButton x:Name="SidebarToggle" Style="{StaticResource OsdToggleButtonStyle}" Background="Transparent" Visibility="Collapsed"
+                              Click="SidebarToggle_Click" ToolTipService.ToolTip="{l:Tr Text='Open Sidebar'}">
+                    <FontIcon Glyph="&#xE700;" FontSize="14" />
+                </ToggleButton>
+                <Button x:Name="OpenButton" Style="{StaticResource OsdButtonStyle}" Click="Open_Click" ToolTipService.ToolTip="{l:Tr Text='Open Image'}">
+                    <FontIcon Glyph="&#xE838;" FontSize="14" />
+                </Button>
+                <Button x:Name="ScreenshotButton" Style="{StaticResource OsdButtonStyle}" Click="Screenshot_Click" ToolTipService.ToolTip="{l:Tr Text='Take a Screenshot'}">
+                    <c:SymbolicIcon Icon="screenshooter" Size="16" />
+                </Button>
+                <Button x:Name="MenuButton" Style="{StaticResource OsdButtonStyle}" ToolTipService.ToolTip="{l:Tr Text='Main Menu'}">
+                    <FontIcon Glyph="&#xE712;" FontSize="14" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <MenuFlyoutItem Text="{l:Tr Text='_Source Snippets'}" Click="SourceSnippet_Click">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE943;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="DeleteScreenshotsItem" Text="{l:Tr Text='_Delete Taken Screenshot(s)'}" Click="DeleteScreenshots_Click" IsEnabled="False">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="{l:Tr Text='_Preferences'}" Click="Preferences_Click">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{l:Tr Text='_Keyboard Shortcuts'}" Click="Shortcuts_Click">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE765;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{l:Tr Text='D_onate to Gradia'}" Click="Donate_Click">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEB51;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="{l:Tr Text='_About Gradia'}" Click="About_Click">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE946;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+
+            <Grid x:Name="DragRegion" Grid.Column="1" Background="Transparent">
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Image Source="ms-appx:///Assets/Square44x44Logo.targetsize-24.png" Width="16" Height="16" />
+                    <TextBlock x:Name="TitleText" Text="Gradiwin" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- Welcome page -->
+        <v:WelcomeView x:Name="Welcome" Grid.Row="1" />
+
+        <!-- Editor -->
+        <SplitView x:Name="Split" Grid.Row="1" Visibility="Collapsed" DisplayMode="Inline" IsPaneOpen="True"
+                   OpenPaneLength="336" PanePlacement="Left" PaneBackground="Transparent"
+                   PaneClosed="Split_PaneClosed" PaneOpened="Split_PaneOpened">
+            <SplitView.Pane>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <ScrollViewer x:Name="SidebarScroll" HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="SidebarStack" Padding="14,6,16,16" Spacing="4" />
+                    </ScrollViewer>
+                    <Grid Grid.Row="1" Padding="14,10,16,14" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="SaveButton" HorizontalAlignment="Stretch" IsEnabled="False" Click="Save_Click"
+                                ToolTipService.ToolTip="{l:Tr Text='Save File'}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE74E;" FontSize="14" />
+                                <TextBlock Text="{l:Tr Text='Save'}" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="CopyButton" Grid.Column="1" HorizontalAlignment="Stretch" IsEnabled="False" Click="Copy_Click"
+                                Style="{StaticResource AccentButtonStyle}" ToolTipService.ToolTip="{l:Tr Text='Copy to Clipboard'}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                <TextBlock Text="{l:Tr Text='Copy'}" />
+                            </StackPanel>
+                        </Button>
+                        <SplitButton x:Name="ShareButton" Grid.Column="2" IsEnabled="False" Click="Share_Click"
+                                     ToolTipService.ToolTip="{l:Tr Text='Share Image'}">
+                            <c:SymbolicIcon Icon="share" Size="16" />
+                            <SplitButton.Flyout>
+                                <MenuFlyout Placement="TopEdgeAlignedRight">
+                                    <MenuFlyoutItem Text="{l:Tr Text='Share…'}" Click="ShareSheet_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE72D;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem x:Name="UploadItem" Text="{l:Tr Text='Upload'}" Click="Upload_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE898;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="{l:Tr Text='Choose Upload Provider…'}" Click="ChooseProvider_Click">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </SplitButton.Flyout>
+                        </SplitButton>
+                    </Grid>
+                </Grid>
+            </SplitView.Pane>
+
+            <Grid x:Name="CanvasArea" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                  BorderThickness="1,1,0,0" CornerRadius="8,0,0,0">
+                <c:EditorCanvas x:Name="Canvas" />
+                <ProgressRing x:Name="Loading" IsActive="False" Width="48" Height="48" />
+
+                <!-- Bottom-left OSD: crop, OCR, erase selected -->
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="12">
+                    <Border Style="{StaticResource OsdPanelStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <ToggleButton x:Name="CropToggle" Style="{StaticResource OsdToggleButtonStyle}" Click="CropToggle_Click"
+                                          ToolTipService.ToolTip="{l:Tr Text='Crop Image'}">
+                                <c:SymbolicIcon Icon="crop" Size="16" />
+                            </ToggleButton>
+                            <DropDownButton x:Name="CropAspectButton" Visibility="Collapsed" Padding="8,6" Background="Transparent" BorderThickness="0"
+                                            ToolTipService.ToolTip="{l:Tr Text='Aspect Ratio'}">
+                                <c:SymbolicIcon x:Name="CropAspectIcon" Icon="aspect-ratio-free" Size="16" />
+                            </DropDownButton>
+                            <Button x:Name="ResetCropButton" Style="{StaticResource OsdButtonStyle}" Visibility="Collapsed" Click="ResetCrop_Click"
+                                    ToolTipService.ToolTip="{l:Tr Text='Reset Crop'}">
+                                <c:SymbolicIcon Icon="crop-reset" Size="16" />
+                            </Button>
+                            <Button x:Name="OcrButton" Style="{StaticResource OsdButtonStyle}" Click="Ocr_Click"
+                                    ToolTipService.ToolTip="{l:Tr Text='Text Extraction'}">
+                                <c:SymbolicIcon Icon="scanner" Size="16" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="EraseSelectedPanel" Style="{StaticResource OsdPanelStyle}" Visibility="Collapsed">
+                        <Button Style="{StaticResource OsdButtonStyle}" Click="EraseSelected_Click" ToolTipService.ToolTip="{l:Tr Text='Erase Selected'}">
+                            <c:SymbolicIcon Icon="eraser4" Size="16" />
+                        </Button>
+                    </Border>
+                </StackPanel>
+
+                <!-- Bottom-center: crop confirm -->
+                <StackPanel x:Name="CropConfirmPanel" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12,12,12,72" Visibility="Collapsed">
+                    <Button Click="CropBack_Click" CornerRadius="16" Padding="16,6" Content="{l:Tr Text='Back'}" />
+                    <Button Click="CropConfirm_Click" CornerRadius="16" Padding="16,6" Style="{StaticResource AccentButtonStyle}"
+                            ToolTipService.ToolTip="{l:Tr Text='Confirm Crop Selection'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <SymbolIcon Symbol="Accept" />
+                            <TextBlock Text="{l:Tr Text='Confirm'}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Bottom-right: zoom and history -->
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="12">
+                    <Border Style="{StaticResource OsdPanelStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button Style="{StaticResource OsdButtonStyle}" Click="ZoomOut_Click" ToolTipService.ToolTip="{l:Tr Text='Zoom Out'}">
+                                <c:SymbolicIcon Icon="zoom-minus" Size="16" />
+                            </Button>
+                            <Button x:Name="ZoomLabel" Style="{StaticResource OsdButtonStyle}" MinWidth="56" Click="ResetZoom_Click" Content="100%"
+                                    ToolTipService.ToolTip="{l:Tr Text='Reset Zoom'}" />
+                            <Button Style="{StaticResource OsdButtonStyle}" Click="ZoomIn_Click" ToolTipService.ToolTip="{l:Tr Text='Zoom In'}">
+                                <c:SymbolicIcon Icon="zoom-plus" Size="16" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource OsdPanelStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button x:Name="UndoButton" Style="{StaticResource OsdButtonStyle}" Click="Undo_Click" IsEnabled="False" ToolTipService.ToolTip="{l:Tr Text='Undo'}">
+                                <FontIcon Glyph="&#xE7A7;" FontSize="16" />
+                            </Button>
+                            <Button x:Name="RedoButton" Style="{StaticResource OsdButtonStyle}" Click="Redo_Click" IsEnabled="False" ToolTipService.ToolTip="{l:Tr Text='Redo'}">
+                                <FontIcon Glyph="&#xE7A6;" FontSize="16" />
+                            </Button>
+                            <Button x:Name="ClearButton" Style="{StaticResource OsdButtonStyle}" Click="Clear_Click" IsEnabled="False" ToolTipService.ToolTip="{l:Tr Text='Clear All'}">
+                                <FontIcon Glyph="&#xE894;" FontSize="16" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </SplitView>
+
+        <!-- Drop overlay (overlay/drop_overlay.py) -->
+        <Grid x:Name="DropOverlay" Grid.RowSpan="2" Visibility="Collapsed" IsHitTestVisible="False">
+            <Rectangle Fill="{ThemeResource SmokeFillColorDefaultBrush}" />
+            <Border Margin="24" BorderThickness="3" CornerRadius="16" BorderBrush="{ThemeResource AccentFillColorDefaultBrush}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                    <FontIcon Glyph="&#xE8B5;" FontSize="48" />
+                    <TextBlock Text="{l:Tr Text='Drop Image Here'}" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Toasts (Adw.ToastOverlay) -->
+        <StackPanel x:Name="ToastHost" Grid.Row="1" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,72" MaxWidth="520" />
+    </Grid>
+</Window>
