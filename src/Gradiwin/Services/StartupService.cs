@@ -23,6 +23,8 @@ public static class StartupService
     /// <summary>Enables or disables the task; returns the resulting state.</summary>
     public static async Task<StartupTaskState?> SetEnabledAsync(bool enabled)
     {
+        if (await GetStateAsync() is null)
+            return null; // Unpackaged build: there is no startup task to change.
         try
         {
             var task = await StartupTask.GetAsync(TaskId);

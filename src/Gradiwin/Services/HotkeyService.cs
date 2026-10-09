@@ -29,7 +29,10 @@ public sealed partial class HotkeyService : IDisposable
 
     private static HotkeyService? s_instance;
 
-    private readonly WndProc _wndProc;
+    // The window class is registered once per process, so its procedure must be a single static
+    // delegate that is never collected (a per-instance delegate would dangle after Dispose).
+    private static readonly WndProc s_wndProc = StaticWindowProc;
+    private static bool s_classRegistered;
     private readonly nint _hwnd;
     private nint _icon;
     private bool _trayAdded;
@@ -104,16 +107,18 @@ public sealed partial class HotkeyService : IDisposable
 
     private HotkeyService()
     {
-        _wndProc = WindowProc;
         var hinstance = GetModuleHandleW(null);
-        var wc = new WNDCLASSEXW
+        if (!s_classRegistered)
         {
-            cbSize = (uint)Marshal.SizeOf<WNDCLASSEXW>(),
-            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProc),
-            hInstance = hinstance,
-            lpszClassName = "GradiwinHotkeyWindow",
-        };
-        RegisterClassExW(ref wc);
+            var wc = new WNDCLASSEXW
+            {
+                cbSize = (uint)Marshal.SizeOf<WNDCLASSEXW>(),
+                lpfnWndProc = Marshal.GetFunctionPointerForDelegate(s_wndProc),
+                hInstance = hinstance,
+                lpszClassName = "GradiwinHotkeyWindow",
+            };
+            s_classRegistered = RegisterClassExW(ref wc) != 0;
+        }
         // Message-only windows don't receive broadcasts such as TaskbarCreated, so use a hidden top-level window.
         _hwnd = CreateWindowExW(0, "GradiwinHotkeyWindow", "Gradiwin", 0, 0, 0, 0, 0, 0, 0, hinstance, 0);
         AddTrayIcon();
@@ -130,7 +135,23 @@ public sealed partial class HotkeyService : IDisposable
         SetStatus(ok ? Status.Active : Status.KeyTaken);
     }
 
-    private nint WindowProc(nint hwnd, uint msg, nint wParam, nint lParam)
+    private static nint StaticWindowProc(nint hwnd, uint msg, nint wParam, nint lParam)
+    {
+        // Exceptions must never escape a native window procedure: that terminates the process.
+        try
+        {
+            if (s_instance is { } instance && instance._hwnd == hwnd)
+                return instance.HandleMessage(hwnd, msg, wParam, lParam);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
+        catch (Exception e)
+        {
+            Log.Error("Hotkey window message failed", e);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
+    }
+
+    private nint HandleMessage(nint hwnd, uint msg, nint wParam, nint lParam)
     {
         switch (msg)
         {

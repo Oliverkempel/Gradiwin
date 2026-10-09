@@ -187,11 +187,25 @@ public sealed class PreferencesWindow : Window
         openKeyboard.Click += (_, _) => _ = WindowHelper.OpenUriAsync("ms-settings:easeofaccess-keyboard");
         var retry = new Button { Content = Localizer.T("Try Again") };
         retry.Click += (_, _) => HotkeyService.Apply();
+        // Built once: an element can only have one parent, so the status bar reuses this panel.
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8), Children = { openKeyboard, retry } };
 
         var hotkey = new ToggleSwitch { IsOn = _s.PrintScreenHotkey };
         var startup = new ToggleSwitch { IsEnabled = false };
 
         void UpdateStatus()
+        {
+            try
+            {
+                UpdateStatusCore();
+            }
+            catch (Exception e)
+            {
+                Log.Error("Updating the Print Screen status failed", e);
+            }
+        }
+
+        void UpdateStatusCore()
         {
             bool windowsBinding = HotkeyService.IsWindowsPrintScreenBindingEnabled();
             switch (HotkeyService.CurrentStatus)
@@ -200,7 +214,8 @@ public sealed class PreferencesWindow : Window
                     status.Severity = InfoBarSeverity.Warning;
                     status.Title = Localizer.T("Windows may still open Snipping Tool");
                     status.Message = Localizer.T("Turn off \"Use the Print screen key to open screen capture\" in Windows keyboard settings so Print Screen always opens Gradiwin.");
-                    status.Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8), Children = { openKeyboard } };
+                    retry.Visibility = Visibility.Collapsed;
+                    status.Content = actions;
                     break;
                 case HotkeyService.Status.Active:
                     status.Severity = InfoBarSeverity.Success;
@@ -214,7 +229,8 @@ public sealed class PreferencesWindow : Window
                     status.Message = windowsBinding
                         ? Localizer.T("Windows uses Print Screen for Snipping Tool. Turn off \"Use the Print screen key to open screen capture\" in keyboard settings, then try again.")
                         : Localizer.T("Another app (for example OneDrive, ShareX or Greenshot) has claimed Print Screen. Turn it off there, then try again.");
-                    status.Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8), Children = { openKeyboard, retry } };
+                    retry.Visibility = Visibility.Visible;
+                    status.Content = actions;
                     break;
             }
             status.IsOpen = HotkeyService.CurrentStatus != HotkeyService.Status.Off;

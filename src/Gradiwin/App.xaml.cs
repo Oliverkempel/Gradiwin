@@ -81,9 +81,20 @@ public partial class App : Application
 
     private async Task HandleActivationCoreAsync(AppActivationArguments activation, bool isFirst)
     {
-        Log.Info($"Activation: {activation.Kind}");
         CommandLineOptions options;
-        switch (activation.Kind)
+        ExtendedActivationKind kind;
+        try
+        {
+            kind = activation.Kind;
+        }
+        catch (System.Runtime.InteropServices.COMException e)
+        {
+            // The activation broker can be gone (e.g. the previous instance was killed during a redeploy).
+            Log.Error("Could not read activation kind; treating as a normal launch", e);
+            kind = ExtendedActivationKind.Launch;
+        }
+        Log.Info($"Activation: {kind}");
+        switch (kind)
         {
             case ExtendedActivationKind.File when activation.Data is IFileActivatedEventArgs fileArgs:
                 options = new CommandLineOptions { Files = fileArgs.Files.Select(f => f.Path).Where(p => !string.IsNullOrEmpty(p)).ToList() };
