@@ -18,13 +18,40 @@ public static class ColorPickerFlyout
             Color = ColorUtil.ToColor(initial.A <= 0 ? initial.WithAlpha(1) : initial),
             IsAlphaEnabled = withAlpha,
             IsAlphaTextInputVisible = withAlpha,
-            IsMoreButtonVisible = true,
-            IsColorChannelTextInputVisible = true,
+            // No "More" toggle (it pushed the RGB fields and a lone button off to the right):
+            // the hex field is always visible, which covers typing an exact color.
+            IsMoreButtonVisible = false,
+            IsColorChannelTextInputVisible = false,
             IsHexInputVisible = true,
             ColorSpectrumShape = ColorSpectrumShape.Ring,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        var ok = new Button { Content = Localizer.T("Select"), Style = (Style)Application.Current.Resources["AccentButtonStyle"], HorizontalAlignment = HorizontalAlignment.Right };
-        var panel = new StackPanel { Spacing = 8, Children = { picker, ok } };
+
+        // Balanced footer: Cancel | Select, each half the width (like a ContentDialog).
+        var cancel = new Button { Content = Localizer.T("Cancel"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var ok = new Button
+        {
+            Content = Localizer.T("Select"),
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"],
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        var footer = new Grid { ColumnSpacing = 8, Margin = new Thickness(0, 4, 0, 0) };
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.Children.Add(cancel);
+        Grid.SetColumn(ok, 1);
+        footer.Children.Add(ok);
+
+        var panel = new StackPanel { Spacing = 12, Children = { picker, footer } };
+
+        // Subtle translucency: transient surfaces use acrylic in Fluent (Mica is for long-lived windows);
+        // the thin variant is the lighter one Windows 11 uses for its own flyouts.
+        // The presenter's own fill is made transparent so the backdrop shows through.
+        var presenterStyle = new Style(typeof(FlyoutPresenter));
+        presenterStyle.Setters.Add(new Setter(Control.BackgroundProperty, new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent)));
+        presenterStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(16)));
+        presenterStyle.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, 400.0));
+
         // Placement=Auto made FlyoutBase.ShowAt throw ArgumentException ("Value does not fall within the
         // expected range") for this picker in practice, from the sidebar and from dialogs alike, while an
         // explicit placement always works. Open below the anchor and let the popup extend beyond the window
@@ -34,7 +61,10 @@ public static class ColorPickerFlyout
             Content = new ScrollViewer { Content = panel, MaxHeight = 560 },
             Placement = FlyoutPlacementMode.Bottom,
             ShouldConstrainToRootBounds = false,
+            FlyoutPresenterStyle = presenterStyle,
+            SystemBackdrop = new ThinAcrylicBackdrop(),
         };
+        cancel.Click += (_, _) => flyout.Hide();
         ok.Click += (_, _) =>
         {
             onPicked(ColorUtil.ToRgba(picker.Color));
