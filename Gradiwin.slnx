@@ -1,7 +1,18 @@
 <Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+    <Platform Name="x86" />
+  </Configurations>
   <Folder Name="/src/">
     <Project Path="src/Gradiwin.Core/Gradiwin.Core.csproj" />
-    <Project Path="src/Gradiwin/Gradiwin.csproj" />
+    <Project Path="src/Gradiwin/Gradiwin.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x86" Project="x86" />
+      <!-- MSIX apps must be deployed before Visual Studio can start them under the debugger. -->
+      <Deploy />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Gradiwin.Core.Tests/Gradiwin.Core.Tests.csproj" />
