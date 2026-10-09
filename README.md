@@ -15,7 +15,72 @@ Built with WinUI 3 (Windows App SDK 1.8), C#/.NET 10 and Win2D, packaged as MSIX
 - **Zoom and pan:** Ctrl+wheel or pinch to zoom; middle-drag or Space-drag to pan.
 - **Export:** save as PNG, JPEG or WebP, copy, the Windows Share sheet, and upload (GoFile, Imgur, or a custom PowerShell command).
 - **OCR:** text extraction with the built-in Windows OCR engine.
+- **Print Screen:** PrtScn opens Gradiwin's picker instead of Snipping Tool, and Ctrl+PrtScn captures all screens. While this is on, Gradiwin stays in the notification area.
 - **Other:** pin windows (`--pin`), preferences, Gradia's keyboard shortcuts, and Gradia's 22 translations (its `.po` files are used as-is).
+
+## Installation
+
+Download a release from the [Releases page](../../releases). Each release has two kinds of download, each for **x64** (most PCs) and **ARM64** (Snapdragon and other Arm PCs):
+
+| File | What it is |
+|---|---|
+| `Gradiwin-<version>-<arch>.msix` | Installable package (recommended) |
+| `Gradiwin-<version>-<arch>-portable.zip` | Standalone app; unzip and run, nothing is installed |
+| `Gradiwin.cer` | Certificate needed once to install the MSIX |
+
+You need Windows 10 version 2004 (build 19041) or later, or Windows 11.
+
+### MSIX package (recommended)
+
+The package is signed with Gradiwin's own self-signed certificate rather than one from a certificate authority. So the first time, Windows has to be told to trust it:
+
+1. Download `Gradiwin.cer` and the `.msix` for your PC.
+2. Trust the certificate. You only do this once; later releases use the same certificate.
+   - Double-click `Gradiwin.cer` and choose **Install Certificate…**.
+   - Pick **Local Machine** (this needs admin rights).
+   - Choose **Place all certificates in the following store**, then **Browse… › Trusted People**.
+   - Click **Finish**.
+
+   Or, in an administrator PowerShell:
+   ```powershell
+   Import-Certificate -FilePath .\Gradiwin.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+   ```
+3. Double-click the `.msix` and click **Install**. Or, in PowerShell:
+   ```powershell
+   Add-AppxPackage .\Gradiwin-<version>-x64.msix
+   ```
+
+The package needs the Windows App SDK 1.8 runtime. Windows normally installs it automatically. If installation complains about a missing framework, install the runtime from [Microsoft's Windows App SDK downloads](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads) and try again.
+
+- **Updating:** install a newer `.msix` the same way. It replaces the old version and keeps your settings.
+- **Uninstalling:** *Settings › Apps › Installed apps › Gradiwin › Uninstall*.
+
+### Portable zip
+
+1. Download the `-portable.zip` for your PC.
+2. Before extracting, right-click the zip and choose **Properties**. Tick **Unblock** if it's there, then click **OK**.
+3. Extract it anywhere, for example `C:\Tools\Gradiwin`, and run `Gradiwin.exe`. The executable isn't signed. If SmartScreen warns you, choose **More info › Run anyway**.
+
+The zip contains everything it needs, including .NET and the Windows App SDK, so nothing else has to be installed. Settings are stored in `%LOCALAPPDATA%\Gradiwin`.
+
+- **Updating:** replace the folder's contents with the newer release.
+- **Uninstalling:** delete the folder, and `%LOCALAPPDATA%\Gradiwin` if you want your settings gone too.
+
+### MSIX vs portable
+
+The editor is the same in both. Some Windows integrations need an installed package, so the zip doesn't have them:
+
+| | MSIX | Portable zip |
+|---|:---:|:---:|
+| Editing, export, upload, OCR and code snippets | ✓ | ✓ |
+| Print Screen opens Gradiwin, with the notification-area icon | ✓ | ✓, while Gradiwin is running |
+| **Start with Windows**, so Print Screen works right after you sign in | ✓ | – |
+| `gradia` / `gradiwin` commands in any terminal (`gradia --screenshot`) | ✓ | – (run `Gradiwin.exe` with the same options instead) |
+| **Open with › Gradiwin** for PNG, JPEG, WebP, AVIF and BMP files | ✓ | – |
+| **Edit in Gradiwin** target in the Windows Share sheet | ✓ | – |
+| Start menu entry, and clean uninstall from Settings | ✓ | – |
+| Runs without installing anything or importing a certificate | – | ✓ |
+| Download size | about 20 MB | about 120 MB (everything bundled) |
 
 ## Differences from Gradia
 
@@ -46,6 +111,24 @@ There are three ways to run the app:
 To create an MSIX: `dotnet build src/Gradiwin/Gradiwin.csproj -c Release -p:Platform=x64 -p:GenerateAppxPackageOnBuild=true`. Sign it with your own certificate before installing.
 
 Debug builds include `Gradiwin.exe --selftest <image> <outdir>`, which renders every background, annotation type, export format, crop, snippet and OCR without any UI input.
+
+## CI and releases
+
+`main` is protected: changes go in through pull requests.
+
+- **CI** (`.github/workflows/ci.yml`) runs on every PR into `main`:
+  - It works out the version that merging would release and shows it in the run summary.
+  - It runs the unit tests and builds the x64 portable zip and MSIX.
+  - Its **Build & test** check must pass before merging.
+- **Release** (`.github/workflows/release.yml`) runs when a PR is merged:
+  - It bumps the latest `vX.Y.Z` tag according to the merged PR's label: `major`, `minor` or `patch` (the default when no label is set).
+  - It builds x64 and ARM64 portable zips and signed MSIX packages, then creates the tag and a GitHub Release with generated notes.
+  - Add the `skip-release` label to merge without releasing.
+  - You can also start it manually from the Actions tab.
+- **First release:** while there are no tags, the first release uses the version in `Directory.Build.props`.
+- **Signing:** MSIX packages are signed with a self-signed certificate, `CN=Gradiwin`, which must match the manifest's Publisher.
+  - The secrets `MSIX_CERT_PFX` (base64 PFX) and `MSIX_CERT_PASSWORD` hold the key. The public certificate is `build/Gradiwin.cer`.
+  - To install a release MSIX, import that certificate into *Local Machine › Trusted People*.
 
 ## Repository layout
 
