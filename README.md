@@ -3,6 +3,14 @@
 A native Windows port of [Gradia](https://github.com/AlexanderVanhee/Gradia) by Alexander Vanhee: *make your screenshots ready for the world*.
 Built with WinUI 3 (Windows App SDK 1.8), C#/.NET 10 and Win2D, packaged as MSIX.
 
+Editing                                            |  Source snippits
+:-------------------------------------------------:|:-----------------------------------------------------:
+![editing window](docs/_media/editing-window.png)  |  ![source snippits](docs/_media/source-snippets.png)
+
+
+
+
+
 ## Why this port exists
 
 I really liked using Gradia on Linux. It made turning a quick screenshot into something presentable effortless. For work, though, I use Windows, and I kept missing it.
