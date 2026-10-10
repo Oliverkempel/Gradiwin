@@ -16,8 +16,8 @@ public sealed class SourceSnippetWindow : Window
     private readonly SettingsService _s = SettingsService.Instance;
     private readonly Func<string, Task> _onCreated;
     private readonly TextBox _code;
-    private readonly ComboBox _language = new() { MinWidth = 150, Header = null };
-    private readonly ComboBox _theme = new() { MinWidth = 110 };
+    private readonly ComboBox _language = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly ComboBox _theme = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ToggleSwitch _frame;
     private readonly TextBox _title;
     private readonly ToggleSwitch _lineNumbers;
@@ -32,7 +32,7 @@ public sealed class SourceSnippetWindow : Window
         Title = Localizer.StripMnemonic(Localizer.T("_Source Snippets"));
         SystemBackdrop = new MicaBackdrop();
         WindowHelper.SetIcon(this);
-        WindowHelper.Resize(this, 1100, 720);
+        WindowHelper.Resize(this, 1200, 760);
 
         _code = new TextBox
         {
@@ -62,38 +62,68 @@ public sealed class SourceSnippetWindow : Window
         _theme.SelectedIndex = Math.Max(0, SourceSnippetRenderer.Themes.ToList().FindIndex(t => t.Name == _s.SourceSnippetStyleScheme));
         _theme.SelectionChanged += (_, _) => { _s.SourceSnippetStyleScheme = SourceSnippetRenderer.Themes[_theme.SelectedIndex].Name; Rerender(); };
 
-        _frame = new ToggleSwitch { IsOn = _s.SourceSnippetShowFrame, OnContent = Localizer.T("Window Frame"), OffContent = Localizer.T("Window Frame") };
+        // Every option has a visible label (the top-row toolbar had several unlabelled controls).
+        _language.Header = Localizer.T("Language");
+        _theme.Header = Localizer.T("Theme");
+        _frame = new ToggleSwitch { Header = Localizer.T("Window frame"), IsOn = _s.SourceSnippetShowFrame };
         _frame.Toggled += (_, _) => { _s.SourceSnippetShowFrame = _frame.IsOn; _title!.IsEnabled = _frame.IsOn; Rerender(); };
-        _title = new TextBox { Text = _s.SourceSnippetTitle, MinWidth = 160, PlaceholderText = Localizer.T("Title"), IsEnabled = _frame.IsOn };
+        _title = new TextBox
+        {
+            Header = Localizer.T("Window title"),
+            Text = _s.SourceSnippetTitle,
+            PlaceholderText = Localizer.T("Title"),
+            IsEnabled = _frame.IsOn,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
         _title.TextChanged += (_, _) => { _s.SourceSnippetTitle = _title.Text; Rerender(); };
-        _lineNumbers = new ToggleSwitch { IsOn = _s.SourceSnippetShowLineNumbers, OnContent = Localizer.T("Line Numbers"), OffContent = Localizer.T("Line Numbers") };
+        _lineNumbers = new ToggleSwitch { Header = Localizer.T("Line numbers"), IsOn = _s.SourceSnippetShowLineNumbers };
         _lineNumbers.Toggled += (_, _) => { _s.SourceSnippetShowLineNumbers = _lineNumbers.IsOn; Rerender(); };
-        _width = new Slider { Minimum = 320, Maximum = 1400, Value = _s.SourceSnippetWidth, Width = 160, StepFrequency = 10, VerticalAlignment = VerticalAlignment.Center };
-        ToolTipService.SetToolTip(_width, Localizer.T("Width"));
-        _width.ValueChanged += (_, _) => { _s.SourceSnippetWidth = _width.Value; Rerender(); };
+        _width = new Slider { Minimum = 320, Maximum = 1400, Value = _s.SourceSnippetWidth, StepFrequency = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
+        string WidthLabel() => Localizer.F("Width: {0} px", (int)_width.Value);
+        _width.Header = WidthLabel();
+        _width.ValueChanged += (_, _) => { _s.SourceSnippetWidth = _width.Value; _width.Header = WidthLabel(); Rerender(); };
 
         _preview.Draw += OnPreviewDraw;
         _preview.CreateResources += (_, _) => Rerender();
 
-        var create = new Button { Content = Localizer.T("Create Image"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var create = new Button
+        {
+            Content = Localizer.T("Create Image"),
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"],
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
         create.Click += async (_, _) => await CreateAsync();
 
-        var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Padding = new Thickness(16, 10, 16, 10) };
-        toolbar.Children.Add(_language);
-        toolbar.Children.Add(_theme);
-        toolbar.Children.Add(_frame);
-        toolbar.Children.Add(_title);
-        toolbar.Children.Add(_lineNumbers);
-        toolbar.Children.Add(_width);
-        // The row is as tall as its tallest item (the toggle switches); without centering, the
-        // title TextBox stretches to that height and looks taller than the ComboBoxes.
-        foreach (var child in toolbar.Children.OfType<FrameworkElement>())
-            child.VerticalAlignment = VerticalAlignment.Center;
+        // Options sidebar, grouped like the main window's sidebar.
+        TextBlock Section(string text) => new()
+        {
+            Text = Localizer.T(text),
+            Style = (Style)Application.Current.Resources["SidebarHeaderStyle"],
+            Margin = new Thickness(2, 8, 0, 0),
+        };
+        var options = new StackPanel { Spacing = 12, Padding = new Thickness(0, 0, 12, 0) };
+        options.Children.Add(Section("Highlighting"));
+        options.Children.Add(_language);
+        options.Children.Add(_theme);
+        options.Children.Add(Section("Window"));
+        options.Children.Add(_frame);
+        options.Children.Add(_title);
+        options.Children.Add(Section("Layout"));
+        options.Children.Add(_lineNumbers);
+        options.Children.Add(_width);
+        var optionsHost = new ScrollViewer { Content = options, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 
-        var body = new Grid { ColumnSpacing = 12, Padding = new Thickness(16, 0, 16, 0) };
-        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) });
-        body.Children.Add(_code);
+        // Code and preview columns, each with a caption so it's clear which side is which.
+        FrameworkElement Captioned(string caption, FrameworkElement content)
+        {
+            var g = new Grid { RowSpacing = 6 };
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            g.Children.Add(Section(caption));
+            Grid.SetRow(content, 1);
+            g.Children.Add(content);
+            return g;
+        }
         var previewHost = new Border
         {
             Child = _preview,
@@ -102,28 +132,32 @@ public sealed class SourceSnippetWindow : Window
             BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
             BorderThickness = new Thickness(1),
         };
-        Grid.SetColumn(previewHost, 1);
-        body.Children.Add(previewHost);
 
-        var footer = new Grid { Padding = new Thickness(16, 12, 16, 16) };
-        create.HorizontalAlignment = HorizontalAlignment.Right;
-        footer.Children.Add(create);
+        var body = new Grid { ColumnSpacing = 16, Padding = new Thickness(16, 0, 16, 0) };
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(250) });
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) });
+        body.Children.Add(optionsHost);
+        var codeColumn = Captioned("Code", _code);
+        Grid.SetColumn(codeColumn, 1);
+        body.Children.Add(codeColumn);
+        var previewColumn = Captioned("Preview", previewHost);
+        Grid.SetColumn(previewColumn, 2);
+        body.Children.Add(previewColumn);
+
+        var footer = new Grid { Padding = new Thickness(16, 12, 16, 16), Children = { create } };
 
         // Same integrated title bar as the main window.
         var titleBar = WindowHelper.CreateTitleBar(this, Title);
-        var toolbarHost = new ScrollViewer { Content = toolbar, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalScrollMode = ScrollMode.Auto };
 
         var root = new Grid();
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.Children.Add(titleBar);
-        Grid.SetRow(toolbarHost, 1);
-        root.Children.Add(toolbarHost);
-        Grid.SetRow(body, 2);
+        Grid.SetRow(body, 1);
         root.Children.Add(body);
-        Grid.SetRow(footer, 3);
+        Grid.SetRow(footer, 2);
         root.Children.Add(footer);
         Content = root;
 

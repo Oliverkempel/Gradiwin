@@ -43,37 +43,41 @@ public static partial class WindowHelper
         bar.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         bar.ColumnDefinitions.Add(captionColumn);
 
+        // Drag area: everything left of the caption buttons.
         var dragRegion = new Microsoft.UI.Xaml.Controls.Grid
         {
             Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            Children =
-            {
-                new Microsoft.UI.Xaml.Controls.StackPanel
-                {
-                    Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal,
-                    Spacing = 8,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Children =
-                    {
-                        new Microsoft.UI.Xaml.Controls.Image
-                        {
-                            Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri("ms-appx:///Assets/Square44x44Logo.targetsize-24.png")),
-                            Width = 16,
-                            Height = 16,
-                        },
-                        new Microsoft.UI.Xaml.Controls.TextBlock
-                        {
-                            Text = title,
-                            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                            VerticalAlignment = VerticalAlignment.Center,
-                        },
-                    },
-                },
-            },
         };
         bar.Children.Add(dragRegion);
         window.SetTitleBar(dragRegion);
+
+        // Icon + title on their own layer spanning the full width, so they're centered on the window
+        // rather than on the area left of the caption buttons. It ignores input, so dragging still works.
+        var titleContent = new Microsoft.UI.Xaml.Controls.StackPanel
+        {
+            Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Children =
+            {
+                new Microsoft.UI.Xaml.Controls.Image
+                {
+                    Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri("ms-appx:///Assets/Square44x44Logo.targetsize-24.png")),
+                    Width = 16,
+                    Height = 16,
+                },
+                new Microsoft.UI.Xaml.Controls.TextBlock
+                {
+                    Text = title,
+                    Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+            },
+        };
+        Microsoft.UI.Xaml.Controls.Grid.SetColumnSpan(titleContent, 2);
+        bar.Children.Add(titleContent);
 
         // Reserve exactly the width of the minimize/maximize/close buttons (they scale with DPI).
         bar.Loaded += (_, _) =>
