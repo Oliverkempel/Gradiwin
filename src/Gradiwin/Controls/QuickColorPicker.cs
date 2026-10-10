@@ -13,7 +13,7 @@ public sealed partial class QuickColorPicker : StackPanel
 {
     private readonly List<(Button Button, ColorSwatch Swatch, NamedColor Color)> _buttons = [];
     private readonly Button _more;
-    private readonly ColorSwatch _customSwatch;
+    private readonly CustomColorSwatch _customSwatch;
     private RgbaColor _color = RgbaColor.Black;
 
     public event Action<QuickColorPicker, RgbaColor>? ColorChanged;
@@ -24,11 +24,11 @@ public sealed partial class QuickColorPicker : StackPanel
         HorizontalAlignment = HorizontalAlignment.Center;
         Spacing = 2;
 
-        _customSwatch = new ColorSwatch(22) { Visibility = Visibility.Collapsed };
+        _customSwatch = new CustomColorSwatch(22);
         _more = new Button
         {
-            Content = new Grid { Children = { new SymbolicIcon("color", 18), _customSwatch } },
-            Padding = new Thickness(6),
+            Content = _customSwatch,
+            Padding = new Thickness(5),
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
         };
@@ -90,8 +90,7 @@ public sealed partial class QuickColorPicker : StackPanel
             b.Swatch.IsSelected = m;
             matched |= m;
         }
-        _customSwatch.Visibility = matched ? Visibility.Collapsed : Visibility.Visible;
-        _customSwatch.Color = color;
+        _customSwatch.CustomColor = matched ? null : color;
         _customSwatch.IsSelected = !matched;
     }
 
@@ -162,7 +161,7 @@ public sealed partial class SimpleColorPicker : Button
             };
             grid.Children.Add(b);
         }
-        var more = new Button { Content = new SymbolicIcon("color", 18), Padding = new Thickness(8), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0) };
+        var more = new Button { Content = new CustomColorSwatch(26), Padding = new Thickness(4), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0) };
         ToolTipService.SetToolTip(more, Localizer.T("More Colors"));
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(more, Localizer.T("More Colors"));
         more.Click += (_, _) =>
