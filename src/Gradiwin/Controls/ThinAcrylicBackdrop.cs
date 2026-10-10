@@ -20,9 +20,19 @@ public sealed partial class ThinAcrylicBackdrop : SystemBackdrop
         base.OnTargetConnected(connectedTarget, xamlRoot);
         if (!DesktopAcrylicController.IsSupported())
             return; // e.g. transparency effects turned off: the flyout keeps its regular fill
-        _controller = new DesktopAcrylicController { Kind = DesktopAcrylicKind.Thin };
+        var config = GetDefaultSystemBackdropConfiguration(connectedTarget, xamlRoot);
+        bool light = config.Theme == SystemBackdropTheme.Light;
+        _controller = new DesktopAcrylicController
+        {
+            Kind = DesktopAcrylicKind.Thin,
+            // Thin acrylic on its own lets too much through; a heavier tint in the flyout color keeps only
+            // a faint hint of what is behind. Raise TintOpacity for less see-through, lower it for more.
+            TintColor = light ? Windows.UI.Color.FromArgb(255, 0xF3, 0xF3, 0xF3) : Windows.UI.Color.FromArgb(255, 0x2C, 0x2C, 0x2C),
+            TintOpacity = 0.55f,
+            LuminosityOpacity = 0.85f,
+        };
         _controller.AddSystemBackdropTarget(connectedTarget);
-        _controller.SetSystemBackdropConfiguration(GetDefaultSystemBackdropConfiguration(connectedTarget, xamlRoot));
+        _controller.SetSystemBackdropConfiguration(config);
     }
 
     protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop disconnectedTarget)
