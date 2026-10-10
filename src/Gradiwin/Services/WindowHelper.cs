@@ -28,6 +28,62 @@ public static partial class WindowHelper
             window.AppWindow.SetIcon(icon);
     }
 
+    /// <summary>
+    /// Gives a code-built window the same title bar as the main window: content extends into the title
+    /// bar, which is a 44 px row with the app icon and title centered as the drag region, leaving room for
+    /// the system caption buttons. Put the returned element in the window's first row.
+    /// </summary>
+    public static FrameworkElement CreateTitleBar(Window window, string title)
+    {
+        window.ExtendsContentIntoTitleBar = true;
+        window.AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+
+        var captionColumn = new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(140) };
+        var bar = new Microsoft.UI.Xaml.Controls.Grid { Height = 44 };
+        bar.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(captionColumn);
+
+        var dragRegion = new Microsoft.UI.Xaml.Controls.Grid
+        {
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            Children =
+            {
+                new Microsoft.UI.Xaml.Controls.StackPanel
+                {
+                    Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal,
+                    Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children =
+                    {
+                        new Microsoft.UI.Xaml.Controls.Image
+                        {
+                            Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri("ms-appx:///Assets/Square44x44Logo.targetsize-24.png")),
+                            Width = 16,
+                            Height = 16,
+                        },
+                        new Microsoft.UI.Xaml.Controls.TextBlock
+                        {
+                            Text = title,
+                            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                            VerticalAlignment = VerticalAlignment.Center,
+                        },
+                    },
+                },
+            },
+        };
+        bar.Children.Add(dragRegion);
+        window.SetTitleBar(dragRegion);
+
+        // Reserve exactly the width of the minimize/maximize/close buttons (they scale with DPI).
+        bar.Loaded += (_, _) =>
+        {
+            double scale = bar.XamlRoot?.RasterizationScale ?? 1;
+            captionColumn.Width = new GridLength(window.AppWindow.TitleBar.RightInset / scale);
+        };
+        return bar;
+    }
+
     public static void Resize(Window window, int widthDip, int heightDip)
     {
         double scale = GetScale(window);

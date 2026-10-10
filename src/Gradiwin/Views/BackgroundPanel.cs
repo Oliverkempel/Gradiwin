@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-using CommunityToolkit.WinUI.Controls;
 using Gradiwin.Controls;
 using Gradiwin.Core.Models;
 using Gradiwin.Core.Presets;
@@ -20,7 +19,7 @@ namespace Gradiwin.Views;
 public sealed partial class BackgroundPanel : UserControl
 {
     private readonly SettingsService _settings = SettingsService.Instance;
-    private readonly Segmented _modes;
+    private readonly ModeSelector _modes;
     private readonly ContentControl _host = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 12, 0, 0) };
 
     private SolidBackground _solid;
@@ -30,13 +29,13 @@ public sealed partial class BackgroundPanel : UserControl
 
     // Solid
     private readonly List<(ColorSwatch Swatch, NamedColor Color)> _solidSwatches = [];
-    private ColorSwatch? _solidCustom;
+    private CustomColorSwatch? _solidCustom;
 
     // Gradient
     private GradientEditor? _gradientEditor;
     private AngleSelector? _angle;
     private NumberBox? _angleBox;
-    private Segmented? _gradientModes;
+    private ModeSelector? _gradientModes;
 
     // Image
     private Image? _imagePreview;
@@ -53,40 +52,31 @@ public sealed partial class BackgroundPanel : UserControl
         _gradient = _settings.GradientState;
         _mode = _settings.BackgroundMode;
 
-        _modes = new Segmented { HorizontalAlignment = HorizontalAlignment.Stretch };
-        foreach (var (label, glyph) in new[] { ("None", "\uE711"), ("Solid", "\uE91F"), ("Gradient", "\uE790"), ("Image", "\uEB9F") })
-        {
-            // Icon stacked above the label: side by side they don't fit the sidebar width.
-            var item = new SegmentedItem
+        // Icon stacked above the label: side by side they don't fit the sidebar width.
+        var modeItems = new[] { ("None", "\uE711"), ("Solid", "\uE91F"), ("Gradient", "\uE790"), ("Image", "\uEB9F") }
+            .Select(m => new ModeSelector.Item(new StackPanel
             {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                // Extra bottom padding leaves room for the selection indicator under the label.
-                Padding = new Thickness(4, 10, 4, 12),
-                Content = new StackPanel
+                Spacing = 5,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Children =
                 {
-                    Spacing = 5,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    Children =
+                    new FontIcon { Glyph = m.Item2, FontSize = 16, HorizontalAlignment = HorizontalAlignment.Center },
+                    new TextBlock
                     {
-                        new FontIcon { Glyph = glyph, FontSize = 16, HorizontalAlignment = HorizontalAlignment.Center },
-                        new TextBlock
-                        {
-                            Text = Localizer.T(label),
-                            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                            HorizontalAlignment = HorizontalAlignment.Center,
-                            TextTrimming = TextTrimming.CharacterEllipsis,
-                        },
+                        Text = Localizer.T(m.Item1),
+                        Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
                     },
                 },
-            };
-            ToolTipService.SetToolTip(item, Localizer.T(label));
-            _modes.Items.Add(item);
-        }
+            }, Localizer.T(m.Item1)))
+            .ToList();
+        _modes = new ModeSelector(modeItems, new Thickness(4, 10, 4, 6)) { HorizontalAlignment = HorizontalAlignment.Stretch };
         _modes.SelectedIndex = (int)_mode;
-        _modes.SelectionChanged += (_, _) =>
+        _modes.SelectionChanged += index =>
         {
             if (_updating) return;
-            _mode = (BackgroundMode)_modes.SelectedIndex;
+            _mode = (BackgroundMode)index;
             _settings.BackgroundMode = _mode;
             ShowModePanel();
             Notify();
@@ -164,10 +154,10 @@ public sealed partial class BackgroundPanel : UserControl
             _solidSwatches.Add((swatch, named));
             grid.Children.Add(b);
         }
-        _solidCustom = new ColorSwatch(36) { Color = _solid.Rgba };
+        _solidCustom = new CustomColorSwatch(36);
         var more = new Button
         {
-            Content = new Grid { Children = { _solidCustom, new SymbolicIcon("color", 18) } },
+            Content = _solidCustom,
             Padding = new Thickness(4),
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
@@ -201,8 +191,7 @@ public sealed partial class BackgroundPanel : UserControl
         }
         if (_solidCustom != null)
         {
-            _solidCustom.Color = matched ? RgbaColor.Transparent with { A = 0 } : current;
-            _solidCustom.Visibility = matched ? Visibility.Collapsed : Visibility.Visible;
+            _solidCustom.CustomColor = matched ? null : current;
             _solidCustom.IsSelected = !matched;
         }
     }
@@ -214,19 +203,15 @@ public sealed partial class BackgroundPanel : UserControl
         var panel = new StackPanel { Spacing = 10 };
         panel.Children.Add(Header("Gradient Background"));
 
-        _gradientModes = new Segmented();
-        foreach (var (icon, label) in new[] { ("linear", "Linear"), ("radial", "Radial"), ("conic", "Conic") })
-        {
-            var item = new SegmentedItem { Content = new SymbolicIcon(icon, 16) };
-            ToolTipService.SetToolTip(item, Localizer.T(label));
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, Localizer.T(label));
-            _gradientModes.Items.Add(item);
-        }
+        var gradientItems = new[] { ("linear", "Linear"), ("radial", "Radial"), ("conic", "Conic") }
+            .Select(m => new ModeSelector.Item(new SymbolicIcon(m.Item1, 16), Localizer.T(m.Item2)))
+            .ToList();
+        _gradientModes = new ModeSelector(gradientItems, new Thickness(12, 6, 12, 2)) { Width = 150 };
         _gradientModes.SelectedIndex = _gradient.Mode switch { GradientMode.Radial => 1, GradientMode.Conic => 2, _ => 0 };
-        _gradientModes.SelectionChanged += (_, _) =>
+        _gradientModes.SelectionChanged += index =>
         {
             if (_updating) return;
-            _gradient.Mode = _gradientModes.SelectedIndex switch { 1 => GradientMode.Radial, 2 => GradientMode.Conic, _ => GradientMode.Linear };
+            _gradient.Mode = index switch { 1 => GradientMode.Radial, 2 => GradientMode.Conic, _ => GradientMode.Linear };
             UpdateAngleEnabled();
             CommitGradient();
         };
